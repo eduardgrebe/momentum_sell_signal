@@ -55,8 +55,27 @@ uv run sell_monitor.py --start-date 2026-03-11  # override start date
 uv run sell_monitor.py --days 60                # extend deadline to 60 days
 ```
 
+## Configuration file
+
+Copy `config.example.json` to `config.json` (git-ignored) and fill in your values. All fields are optional.
+
+```json
+{
+  "coin": "staked-ether",
+  "days": 30,
+  "email": {
+    "from": "alerts@example.com",
+    "to": "you@example.com",
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_user": "alerts@example.com",
+    "smtp_pass": "secret"
+  }
+}
+```
+
+CLI arguments take precedence over `config.json`, which takes precedence over built-in defaults.
+
 ## Email alerts
 
-Set these environment variables to receive SMTP email alerts on sell signals:
-
-`ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
+Configure the `email` block in `config.json` to receive SMTP alerts on sell signals. In loop mode, at most one email is sent per calendar day.

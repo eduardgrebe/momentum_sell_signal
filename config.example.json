@@ -1,0 +1,12 @@
+{
+  "coin": "staked-ether",
+  "days": 30,
+  "email": {
+    "from": "alerts@example.com",
+    "to": "you@example.com",
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_user": "alerts@example.com",
+    "smtp_pass": "secret"
+  }
+}

@@ -40,3 +40,6 @@ Thumbs.db
 .env.local
 .env.*.local
 secrets.env
+
+# Local config (may contain credentials — use config.example.json as template)
+config.json

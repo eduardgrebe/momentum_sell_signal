@@ -7,16 +7,15 @@ and volume. Compares the score against a time-decaying threshold so that the
 sell criteria loosen as the 30-day deadline approaches.
 
 Usage:
-    pip install requests pandas numpy --break-system-packages
-    python steth_sell_monitor.py                  # one-shot check
-    python steth_sell_monitor.py --loop            # continuous monitoring
-    python steth_sell_monitor.py --loop --interval 1800  # every 30 min
+    uv run sell_monitor.py                        # one-shot check
+    uv run sell_monitor.py --loop                 # continuous monitoring
+    uv run sell_monitor.py --loop --interval 1800 # every 30 min
+    uv run sell_monitor.py --coin bitcoin --days 14
 
-Alerting:
-    By default prints to stdout. Set the environment variables below to
-    receive email alerts (uses SMTP):
-        ALERT_EMAIL_FROM, ALERT_EMAIL_TO, SMTP_HOST, SMTP_PORT,
-        SMTP_USER, SMTP_PASS
+Configuration:
+    Copy config.example.json to config.json and fill in your values.
+    config.json supports: coin, days, and email (from/to/smtp_host/smtp_port/
+    smtp_user/smtp_pass). CLI arguments override config.json values.
 
 Disclaimer: This is NOT financial advice. Technical indicators are
 probabilistic tools, not crystal balls. Use at your own risk.
@@ -35,6 +34,21 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import requests
+
+# ──────────────────────────────────────────────────────────────────────
+# Config file
+# ──────────────────────────────────────────────────────────────────────
+
+_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+def load_config() -> dict:
+    """Load config.json from the script directory, or return an empty dict."""
+    if not os.path.exists(_CONFIG_PATH):
+        return {}
+    with open(_CONFIG_PATH) as f:
+        return json.load(f)
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Configuration
@@ -396,14 +410,14 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
 # Alerting
 # ──────────────────────────────────────────────────────────────────────
 
-def send_email_alert(analysis: dict):
-    """Send an email alert if SMTP env vars are configured."""
-    email_from = os.getenv("ALERT_EMAIL_FROM")
-    email_to = os.getenv("ALERT_EMAIL_TO")
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", email_from)
-    smtp_pass = os.getenv("SMTP_PASS")
+def send_email_alert(analysis: dict, email_cfg: dict):
+    """Send an email alert if email is configured."""
+    email_from = email_cfg.get("from")
+    email_to = email_cfg.get("to")
+    smtp_host = email_cfg.get("smtp_host")
+    smtp_port = int(email_cfg.get("smtp_port", 587))
+    smtp_user = email_cfg.get("smtp_user", email_from)
+    smtp_pass = email_cfg.get("smtp_pass")
 
     if not all([email_from, email_to, smtp_host, smtp_pass]):
         return  # email not configured
@@ -492,15 +506,22 @@ def main():
                         help="Run continuously instead of one-shot")
     parser.add_argument("--interval", type=int, default=3600,
                         help="Seconds between checks in loop mode (default: 3600)")
-    parser.add_argument("--coin", type=str, default=COIN_ID,
+    parser.add_argument("--coin", type=str, default=None,
                         help=f"CoinGecko coin ID to monitor (default: {COIN_ID})")
-    parser.add_argument("--days", type=int, default=DEADLINE_DAYS,
+    parser.add_argument("--days", type=int, default=None,
                         help=f"Sell deadline window in days (default: {DEADLINE_DAYS})")
     parser.add_argument("--start-date", type=str, default=None,
                         help="Override start date (YYYY-MM-DD)")
     parser.add_argument("--json", action="store_true",
                         help="Also dump raw JSON to stdout")
     args = parser.parse_args()
+
+    cfg = load_config()
+    email_cfg = cfg.get("email", {})
+
+    # CLI > config.json > built-in defaults
+    coin = args.coin or cfg.get("coin", COIN_ID)
+    days = args.days or cfg.get("days", DEADLINE_DAYS)
 
     start_date = (
         dt.date.fromisoformat(args.start_date) if args.start_date else dt.date.today()
@@ -509,20 +530,20 @@ def main():
         print(f"Start date overridden to {start_date}")
 
     if not args.loop:
-        analysis = run_once(start_date, coin_id=args.coin, deadline_days=args.days)
+        analysis = run_once(start_date, coin_id=coin, deadline_days=days)
         if analysis["sell_signal"]:
-            send_email_alert(analysis)
+            send_email_alert(analysis, email_cfg)
         if args.json:
             print("\n" + json.dumps(analysis, indent=2))
     else:
         print(f"Starting continuous monitoring (interval: {args.interval}s)")
-        print(f"Coin: {args.coin}")
-        print(f"Deadline: {start_date + dt.timedelta(days=args.days)} ({args.days} days)")
+        print(f"Coin: {coin}")
+        print(f"Deadline: {start_date + dt.timedelta(days=days)} ({days} days)")
         print("Press Ctrl+C to stop.\n")
         last_alert_date: Optional[dt.date] = None
         try:
             while True:
-                analysis = run_once(start_date, coin_id=args.coin, deadline_days=args.days)
+                analysis = run_once(start_date, coin_id=coin, deadline_days=days)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
                 if analysis["sell_signal"]:
@@ -530,7 +551,7 @@ def main():
                           "in case you want to wait for an even better window.")
                     today = dt.date.today()
                     if last_alert_date != today:
-                        send_email_alert(analysis)
+                        send_email_alert(analysis, email_cfg)
                         last_alert_date = today
                 time.sleep(args.interval)
         except KeyboardInterrupt:
