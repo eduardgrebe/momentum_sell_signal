@@ -716,21 +716,23 @@ def main():
         print("Press Ctrl+C to stop.\n")
         send_startup_email(coin, start_date, days, args.interval,
                            start_threshold, daily_update, email_cfg)
-        last_alert_date: Optional[dt.date] = None
+        last_alert_time: Optional[dt.datetime] = None
         last_update_date: Optional[dt.date] = None
+        alert_cooldown = dt.timedelta(hours=3)
         try:
             while True:
                 analysis = run_once(start_date, coin_id=coin, deadline_days=days,
                                     start_threshold=start_threshold)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
-                today = dt.date.today()
+                now = dt.datetime.now()
+                today = now.date()
                 if analysis["sell_signal"]:
                     print("\nSell signal triggered! Continuing to monitor "
                           "in case you want to wait for an even better window.")
-                    if last_alert_date != today:
+                    if last_alert_time is None or (now - last_alert_time) >= alert_cooldown:
                         send_email_alert(analysis, email_cfg)
-                        last_alert_date = today
+                        last_alert_time = now
                 if daily_update and last_update_date != today:
                     send_daily_update_email(analysis, email_cfg)
                     last_update_date = today

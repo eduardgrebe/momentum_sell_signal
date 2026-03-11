@@ -209,9 +209,23 @@ When the composite score meets or exceeds the current threshold, a **SELL SIGNAL
 
 Configure the `email` block in `config.json` to receive alerts via SMTP (STARTTLS, typically port 587).
 
-- **One-shot mode:** one email is sent if the sell signal is active.
-- **Loop mode:** at most one email is sent per calendar day, even if the signal stays active across multiple checks.
-- **Test:** run with `--test-email` to send a test email immediately, regardless of the current signal. The subject is prefixed with `[TEST]`. The command exits with an error if email is not configured.
+### Subject prefixes
+
+| Prefix | When sent |
+|---|---|
+| `[SERVICE STARTED]` | Once when loop mode begins — confirms coin, start date, deadline, interval, thresholds, and daily update setting |
+| `[!ALERT!]` | Sell signal is active — at most once every 3 hours in loop mode; once per run in one-shot mode |
+| `[UPDATE]` | Daily summary with a 7-day history table — loop mode only, requires `"daily_update": true` in `config.json` |
+| `[TEST]` | Sent by `--test-email` regardless of signal; exits with an error if email is not configured |
+
+### Email format
+
+All emails use a fixed-width font with a history table and a full indicator breakdown in the body. Alert, update, and test emails also attach the complete analysis as `analysis.json`.
+
+### Notes
+
+- If email is not configured (missing `smtp_host`, `smtp_pass`, etc.) all emails are silently skipped, except `--test-email` which exits with an error.
+- In loop mode, `[!ALERT!]` emails are sent at most once every 3 hours while the signal remains active. `[UPDATE]` emails are sent at most once per calendar day.
 
 ---
 

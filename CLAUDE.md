@@ -25,12 +25,16 @@ bash setup.sh       # first-time setup on a new machine
 
 ## How it works
 
-On each run, the script:
+In **loop mode**, on startup:
+1. Sends a `[SERVICE STARTED]` confirmation email with key configuration parameters
+
+On each check:
 1. Fetches historical daily price+volume data from CoinGecko
 2. Computes five technical indicators over the full history
 3. Prints a historical score table for the last `deadline_days` days
 4. Prints a full indicator breakdown for today
-5. Sends an email alert if the sell signal is active (if email is configured)
+5. Sends a `[!ALERT!]` email if the sell signal is active (at most once every 3 hours)
+6. Sends a `[UPDATE]` daily summary email if `daily_update` is enabled (once per calendar day)
 
 Five indicators each produce a 0–100 sub-score (higher = better time to sell):
 
@@ -113,6 +117,11 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
 
 Configure the `email` block in `config.json` to receive SMTP alerts (STARTTLS on port 587).
 
-- **One-shot mode**: email sent once if sell signal is active
-- **Loop mode**: at most one email per calendar day
-- **Test**: `--test-email` sends immediately regardless of signal, with `[TEST]` in the subject, and exits with an error if email is not configured
+| Subject prefix | When sent |
+|---|---|
+| `[SERVICE STARTED]` | Once at startup in loop mode — confirms config, coin, interval, thresholds |
+| `[!ALERT!]` | Sell signal active — at most once per calendar day in loop mode; once per run in one-shot mode |
+| `[UPDATE]` | Daily update with 7-day history — loop mode only, if `daily_update: true` in config |
+| `[TEST]` | `--test-email` flag — sends immediately regardless of signal; exits with error if email not configured |
+
+All alert and update emails include an HTML body (fixed-width font, history table, indicator breakdown) and `analysis.json` as an attachment.
