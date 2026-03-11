@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd "$(dirname "$0")"
+
 # Install uv in userspace if not already available
 if ! command -v uv &>/dev/null; then
     echo "uv not found — installing to ~/.local/bin ..."
@@ -9,7 +11,7 @@ if ! command -v uv &>/dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-echo "uv $(uv --version)"
+echo "$(uv --version)"
 
 # Sync dependencies declared in pyproject.toml
 uv sync

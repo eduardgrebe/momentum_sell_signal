@@ -94,8 +94,11 @@ TIME_DECAY_SCHEDULE = [
     (30, 0),    # day 30:     sell regardless
 ]
 
-# How many days of historical price data to fetch (need enough for longest MA)
-HISTORY_DAYS = max(SMA_LONG, MACD_SLOW + MACD_SIGNAL, RSI_PERIOD, STOCH_K_PERIOD) + 30
+# Warm-up rows needed before indicator values are valid
+_INDICATOR_WARMUP = max(SMA_LONG, MACD_SLOW + MACD_SIGNAL, RSI_PERIOD, STOCH_K_PERIOD)
+
+# Default fetch window; extended at runtime when --days exceeds 30
+HISTORY_DAYS = _INDICATOR_WARMUP + DEADLINE_DAYS
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -498,8 +501,9 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
     day_number = (dt.date.today() - start_date).days
     day_number = max(0, min(day_number, deadline_days))
 
-    print(f"\nFetching {HISTORY_DAYS} days of {coin_id} data from CoinGecko...")
-    df = fetch_ohlc(coin_id=coin_id)
+    fetch_days = _INDICATOR_WARMUP + deadline_days
+    print(f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko...")
+    df = fetch_ohlc(coin_id=coin_id, days=fetch_days)
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
     enrich_indicators(df)
