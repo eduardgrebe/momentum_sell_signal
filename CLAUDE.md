@@ -38,13 +38,15 @@ On each check:
 
 Five indicators each produce a 0–100 sub-score (higher = better time to sell):
 
-| Indicator | Weight | What it measures |
-|---|---|---|
-| RSI(14) | 25% | Overbought/oversold momentum |
-| MACD(12,26,9) histogram | 25% | Trend momentum direction and rollover |
-| Stochastic(14,3,3) | 20% | Price position in recent range + crossovers |
-| Price vs SMA(20)/SMA(50) | 15% | Selling into strength above moving averages |
-| Volume ratio (current / 20d avg) | 15% | Participation confirming moves |
+| Indicator | Default weight | Config key | What it measures |
+|---|---|---|---|
+| RSI(14) | 25% | `weights.rsi` | Overbought/oversold momentum |
+| MACD(12,26,9) histogram | 25% | `weights.macd` | Trend momentum direction and rollover |
+| Stochastic(14,3,3) | 20% | `weights.stoch` | Price position in recent range + crossovers |
+| Price vs SMA(20)/SMA(50) | 15% | `weights.ma_pos` | Selling into strength above moving averages |
+| Volume ratio (current / 20d avg) | 15% | `weights.volume` | Participation confirming moves |
+
+Weights are configurable via the `weights` block in `config.json` (see Configuration file). They should sum to 1.0; a warning is printed at startup if they don't.
 
 The weighted composite is compared against a time-decaying threshold. Bracket boundaries scale proportionally with `deadline_days`, so the schedule always spans the full window. The starting threshold is configurable via `start_threshold` in `config.json` (default 70); the intermediate thresholds are fixed:
 
@@ -62,7 +64,7 @@ The full schedule can be changed by editing `TIME_DECAY_SCHEDULE` in the source.
 
 - `DEADLINE_DAYS` — default window length (30); override with `--days` or `config.json`
 - `TIME_DECAY_SCHEDULE` — list of (max_day, threshold) tuples; first entry's threshold is overridden by `start_threshold`
-- `W_RSI`, `W_MACD`, `W_STOCH`, `W_MA_POS`, `W_VOLUME` — indicator weights (must sum to 1.0)
+- `W_RSI`, `W_MACD`, `W_STOCH`, `W_MA_POS`, `W_VOLUME` — indicator weight defaults (overridable via `weights` in `config.json`)
 - Indicator periods: `RSI_PERIOD`, `MACD_FAST/SLOW/SIGNAL`, `STOCH_K_PERIOD/D_PERIOD/SMOOTH`, `SMA_SHORT/LONG`
 
 ## Data source
@@ -94,6 +96,13 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,
+  "weights": {
+    "rsi":    0.25,
+    "macd":   0.25,
+    "stoch":  0.20,
+    "ma_pos": 0.15,
+    "volume": 0.15
+  },
   "email": {
     "from": "alerts@example.com",
     "to": "you@example.com",
@@ -111,6 +120,11 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
 | `days` | Deadline window in days | `30` |
 | `start_threshold` | Sell threshold for days 0–10 | `70` |
 | `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |
+| `weights.rsi` | RSI indicator weight | `0.25` |
+| `weights.macd` | MACD histogram indicator weight | `0.25` |
+| `weights.stoch` | Stochastic indicator weight | `0.20` |
+| `weights.ma_pos` | MA position indicator weight | `0.15` |
+| `weights.volume` | Volume ratio indicator weight | `0.15` |
 | `email.*` | SMTP credentials for alerts | — |
 
 ## Email alerts

@@ -690,6 +690,19 @@ def main():
     days = args.days or cfg.get("days", DEADLINE_DAYS)
     start_threshold = cfg.get("start_threshold", TIME_DECAY_SCHEDULE[0][1])
 
+    # Load indicator weights from config, falling back to module-level defaults
+    global W_RSI, W_MACD, W_STOCH, W_MA_POS, W_VOLUME
+    w = cfg.get("weights", {})
+    W_RSI    = w.get("rsi",       W_RSI)
+    W_MACD   = w.get("macd",      W_MACD)
+    W_STOCH  = w.get("stoch",     W_STOCH)
+    W_MA_POS = w.get("ma_pos",    W_MA_POS)
+    W_VOLUME = w.get("volume",    W_VOLUME)
+    total = W_RSI + W_MACD + W_STOCH + W_MA_POS + W_VOLUME
+    if abs(total - 1.0) > 1e-6:
+        print(f"WARNING: indicator weights sum to {total:.4f}, not 1.0. Scores will be scaled.")
+
+
     start_date = (
         dt.date.fromisoformat(args.start_date) if args.start_date else dt.date.today()
     )

@@ -3,6 +3,13 @@
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,
+  "weights": {
+    "rsi":    0.25,
+    "macd":   0.25,
+    "stoch":  0.20,
+    "ma_pos": 0.15,
+    "volume": 0.15
+  },
   "email": {
     "from": "alerts@example.com",
     "to": "you@example.com",
