@@ -474,10 +474,11 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
     )
 
 
-def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
-               history_limit: Optional[int] = None) -> bool:
-    """Build and send a multipart email with an HTML body and JSON attachment.
-    Returns True on success, False if not configured."""
+def _smtp_connect_and_send(subject: str, html_body: str, email_cfg: dict,
+                           attachment_bytes: Optional[bytes] = None,
+                           attachment_name: Optional[str] = None) -> bool:
+    """Low-level: build and send a multipart email. Returns True on success,
+    False if not configured."""
     email_from = email_cfg.get("from")
     email_to = email_cfg.get("to")
     smtp_host = email_cfg.get("smtp_host")
@@ -493,12 +494,12 @@ def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
     msg["From"] = email_from
     msg["To"] = email_to
 
-    msg.attach(MIMEText(_build_email_html(analysis, history_limit=history_limit), "html"))
+    msg.attach(MIMEText(html_body, "html"))
 
-    json_bytes = json.dumps(analysis, indent=2).encode()
-    attachment = MIMEApplication(json_bytes, Name="analysis.json")
-    attachment["Content-Disposition"] = 'attachment; filename="analysis.json"'
-    msg.attach(attachment)
+    if attachment_bytes and attachment_name:
+        attachment = MIMEApplication(attachment_bytes, Name=attachment_name)
+        attachment["Content-Disposition"] = f'attachment; filename="{attachment_name}"'
+        msg.attach(attachment)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as server:
@@ -510,6 +511,67 @@ def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
     except Exception as e:
         print(f"  Email failed: {e}", file=sys.stderr)
         return False
+
+
+def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
+               history_limit: Optional[int] = None) -> bool:
+    """Build and send an analysis email with HTML body and JSON attachment."""
+    html = _build_email_html(analysis, history_limit=history_limit)
+    json_bytes = json.dumps(analysis, indent=2).encode()
+    return _smtp_connect_and_send(subject, html, email_cfg, json_bytes, "analysis.json")
+
+
+def _build_startup_html(coin: str, start_date: dt.date, days: int, interval: int,
+                        start_threshold: int, daily_update: bool,
+                        email_cfg: dict) -> str:
+    """Build the HTML body for a service startup confirmation email."""
+    deadline = start_date + dt.timedelta(days=days)
+    interval_min = interval // 60
+    interval_sec = interval % 60
+    interval_str = f"{interval_min}m" if interval_sec == 0 else f"{interval_min}m {interval_sec}s"
+
+    # Scaled time-decay schedule
+    scale = days / DEADLINE_DAYS
+    schedule_lines = []
+    prev_day = 0
+    for max_day, threshold in TIME_DECAY_SCHEDULE:
+        scaled = round(max_day * scale)
+        t = start_threshold if max_day == TIME_DECAY_SCHEDULE[0][0] else threshold
+        schedule_lines.append(f"  Days {prev_day:>3}–{scaled:<3}  threshold {t}")
+        prev_day = scaled + 1
+
+    schedule_str = "\n".join(schedule_lines)
+
+    content = (
+        f"[SERVICE STARTED] Sell Monitor\n"
+        f"{'=' * 50}\n\n"
+        f"  Coin:              {coin}\n"
+        f"  Start date:        {start_date}\n"
+        f"  Deadline:          {deadline}  ({days} days)\n"
+        f"  Check interval:    every {interval_str}\n"
+        f"\n"
+        f"  Start threshold:   {start_threshold}  (days 0–{round(TIME_DECAY_SCHEDULE[0][0] * scale)})\n"
+        f"  Time-decay schedule (scaled to {days}-day window):\n"
+        f"{schedule_str}\n"
+        f"\n"
+        f"  Daily update email: {'yes' if daily_update else 'no'}\n"
+        f"  Alert emails to:    {email_cfg.get('to', '(not configured)')}\n"
+    )
+
+    return (
+        "<html><body style=\"font-family: monospace; font-size: 14px;\">"
+        f"<pre>{content}</pre>"
+        "</body></html>"
+    )
+
+
+def send_startup_email(coin: str, start_date: dt.date, days: int, interval: int,
+                       start_threshold: int, daily_update: bool, email_cfg: dict):
+    """Send a service-started confirmation email with key configuration parameters."""
+    subject = f"[SERVICE STARTED] sell-monitor — {coin} ({days}-day window)"
+    html = _build_startup_html(coin, start_date, days, interval,
+                               start_threshold, daily_update, email_cfg)
+    _smtp_connect_and_send(subject, html, email_cfg)
 
 
 def send_email_alert(analysis: dict, email_cfg: dict):
@@ -652,6 +714,8 @@ def main():
         print(f"Coin: {coin}")
         print(f"Deadline: {start_date + dt.timedelta(days=days)} ({days} days)")
         print("Press Ctrl+C to stop.\n")
+        send_startup_email(coin, start_date, days, args.interval,
+                           start_threshold, daily_update, email_cfg)
         last_alert_date: Optional[dt.date] = None
         last_update_date: Optional[dt.date] = None
         try:
