@@ -52,24 +52,31 @@ bash install-service.sh --interval 1800        # check every 30 minutes
 
 The script shows the exact command it will install and asks for confirmation before proceeding.
 
-**macOS** — installs to `~/Library/LaunchAgents/com.sell-monitor.plist`. Logs are written to `~/Library/Logs/sell-monitor.log`.
+Each asset gets its own uniquely named service, so multiple assets can run simultaneously on the same machine. If you run two services with the same interval they will hit the CoinGecko API at the same time every cycle — stagger the intervals slightly to avoid this:
 
-**Linux** — installs to `~/.config/systemd/user/sell-monitor.service`. View logs with `journalctl --user -u sell-monitor -f`. To keep the service running after logout and across reboots, also run:
+```bash
+bash install-service.sh --coin staked-ether --interval 3600   # every 60 minutes
+bash install-service.sh --coin bitcoin --interval 3900        # every 65 minutes
+```
+
+**macOS** — installs to `~/Library/LaunchAgents/com.sell-monitor.<coin>.plist`. Logs are written to `~/Library/Logs/sell-monitor-<coin>.log`.
+
+**Linux** — installs to `~/.config/systemd/user/sell-monitor-<coin>.service`. View logs with `journalctl --user -u sell-monitor-<coin> -f`. To keep services running after logout and across reboots, also run:
 
 ```bash
 loginctl enable-linger $(whoami)
 ```
 
-To uninstall:
+To uninstall (replace `<coin>` with the coin ID, e.g. `bitcoin`):
 
 ```bash
 # macOS
-launchctl unload ~/Library/LaunchAgents/com.sell-monitor.plist
-rm ~/Library/LaunchAgents/com.sell-monitor.plist
+launchctl unload ~/Library/LaunchAgents/com.sell-monitor.<coin>.plist
+rm ~/Library/LaunchAgents/com.sell-monitor.<coin>.plist
 
 # Linux
-systemctl --user disable --now sell-monitor
-rm ~/.config/systemd/user/sell-monitor.service
+systemctl --user disable --now sell-monitor-<coin>
+rm ~/.config/systemd/user/sell-monitor-<coin>.service
 ```
 
 ---
@@ -182,13 +189,15 @@ Five indicators each produce a sub-score from 0 to 100, where a higher score mea
 
 The composite score is compared against a threshold that falls over time. The bracket boundaries **scale proportionally with the `days` setting**, so the schedule always spans the full window regardless of its length. The threshold for the first bracket is configurable via `start_threshold` in `config.json`; the remaining steps are fixed:
 
-| Window proportion | Days (default 30) | Days (example 60) | Threshold | Configurable? |
-|---|---|---|---|---|
-| 0–33% | 0–10 | 0–20 | 70 | Yes — `start_threshold` |
-| 34–67% | 11–20 | 21–40 | 55 | No |
-| 68–83% | 21–25 | 41–50 | 40 | No |
-| 84–97% | 26–29 | 51–58 | 25 | No |
-| 100% | 30 | 60 | 0 | No |
+```
+Window proportion   Days (default 30)   Days (example 60)   Threshold   Configurable?
+─────────────────   ─────────────────   ─────────────────   ─────────   ─────────────────────
+0–33%               0–10                0–20                70          Yes — start_threshold
+34–67%              11–20               21–40               55          No
+68–83%              21–25               41–50               40          No
+84–97%              26–29               51–58               25          No
+100%                30                  60                  0           No
+```
 
 For example, setting `"start_threshold": 55` makes the monitor less strict during the first third of the window — useful if you expect a weaker rally or want to act sooner.
 

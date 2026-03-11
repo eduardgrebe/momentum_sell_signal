@@ -133,6 +133,7 @@ def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS) -> pd.DataFrame
     df["volume"] = [v[1] for v in volumes]
     df["date"] = pd.to_datetime(df["ts"], unit="ms").dt.date
     df = df.drop(columns=["ts"]).set_index("date").sort_index()
+    df = df[~df.index.duplicated(keep="last")]  # keep latest entry per day
 
     # CoinGecko daily data gives close prices; approximate high/low from
     # close using a rolling window matching the Stochastic look-back period.
@@ -463,7 +464,7 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
         f"  DECISION:  {signal_str}\n"
     )
 
-    label = f"last {len(history)} days" if history_limit is None else f"last {len(history)} days"
+    label = f"last {len(history)} days"
     content = f"## Historical Scores ({label})\n\n{table}\n\n{'-'*60}\n\n{breakdown}"
 
     return (

@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # Install sell-monitor as a persistent background service.
 #
-# macOS  → LaunchAgent  (~/.config/systemd/user/ not applicable)
-# Linux  → systemd user service
+# macOS  → LaunchAgent  (~/Library/LaunchAgents/)
+# Linux  → systemd user service (~/.config/systemd/user/)
 #
 # Any arguments passed to this script are forwarded to sell_monitor.py,
 # e.g.:  bash install-service.sh --coin bitcoin --interval 1800
 #
-# To uninstall:
-#   macOS:  launchctl unload ~/Library/LaunchAgents/com.sell-monitor.plist
-#           rm ~/Library/LaunchAgents/com.sell-monitor.plist
-#   Linux:  systemctl --user disable --now sell-monitor
-#           rm ~/.config/systemd/user/sell-monitor.service
+# Multiple assets are supported — each gets its own named service:
+#   bash install-service.sh --coin bitcoin
+#   bash install-service.sh --coin staked-ether
+#
+# To uninstall (macOS):
+#   launchctl unload ~/Library/LaunchAgents/com.sell-monitor.<coin>.plist
+#   rm ~/Library/LaunchAgents/com.sell-monitor.<coin>.plist
+#
+# To uninstall (Linux):
+#   systemctl --user disable --now sell-monitor-<coin>
+#   rm ~/.config/systemd/user/sell-monitor-<coin>.service
 
 set -euo pipefail
 
@@ -28,6 +34,16 @@ fi
 # ── Build the command (always includes --loop; caller adds extras) ────────────
 MONITOR_ARGS=("--loop" "$@")
 
+# ── Derive service identifier from --coin (default: staked-ether) ────────────
+COIN_ID="staked-ether"
+args=("$@")
+for (( i=0; i<${#args[@]}; i++ )); do
+    if [[ "${args[$i]}" == "--coin" && $((i+1)) -lt ${#args[@]} ]]; then
+        COIN_ID="${args[$((i+1))]}"
+    fi
+done
+SERVICE_SUFFIX="$COIN_ID"
+
 # ── Detect OS ────────────────────────────────────────────────────────────────
 case "$(uname -s)" in
     Darwin) OS=macos ;;
@@ -42,9 +58,9 @@ esac
 # macOS — LaunchAgent
 # ─────────────────────────────────────────────────────────────────────────────
 install_macos() {
-    local plist="$HOME/Library/LaunchAgents/com.sell-monitor.plist"
+    local label="com.sell-monitor.$SERVICE_SUFFIX"
+    local plist="$HOME/Library/LaunchAgents/${label}.plist"
     local logdir="$HOME/Library/Logs"
-    local label="com.sell-monitor"
 
     mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -75,9 +91,9 @@ $args_xml    </array>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$logdir/sell-monitor.log</string>
+    <string>$logdir/sell-monitor-${SERVICE_SUFFIX}.log</string>
     <key>StandardErrorPath</key>
-    <string>$logdir/sell-monitor.error.log</string>
+    <string>$logdir/sell-monitor-${SERVICE_SUFFIX}.error.log</string>
 </dict>
 </plist>
 EOF
@@ -87,9 +103,10 @@ EOF
     launchctl load -w "$plist"
 
     echo "LaunchAgent installed and started."
+    echo "  Label:  $label"
     echo "  Plist:  $plist"
-    echo "  Stdout: $logdir/sell-monitor.log"
-    echo "  Stderr: $logdir/sell-monitor.error.log"
+    echo "  Stdout: $logdir/sell-monitor-${SERVICE_SUFFIX}.log"
+    echo "  Stderr: $logdir/sell-monitor-${SERVICE_SUFFIX}.error.log"
     echo ""
     echo "To uninstall:"
     echo "  launchctl unload $plist"
@@ -100,8 +117,9 @@ EOF
 # Linux — systemd user service
 # ─────────────────────────────────────────────────────────────────────────────
 install_linux() {
+    local service_name="sell-monitor-${SERVICE_SUFFIX}"
     local service_dir="$HOME/.config/systemd/user"
-    local service_file="$service_dir/sell-monitor.service"
+    local service_file="$service_dir/${service_name}.service"
 
     mkdir -p "$service_dir"
 
@@ -113,7 +131,7 @@ install_linux() {
 
     cat > "$service_file" <<EOF
 [Unit]
-Description=Sell Monitor — momentum-based crypto sell signal monitor
+Description=Sell Monitor ($COIN_ID) — momentum-based crypto sell signal monitor
 After=network-online.target
 Wants=network-online.target
 
@@ -128,29 +146,30 @@ WantedBy=default.target
 EOF
 
     systemctl --user daemon-reload
-    systemctl --user enable --now sell-monitor
+    systemctl --user enable --now "$service_name"
 
     echo "systemd user service installed and started."
-    echo "  Service file: $service_file"
-    echo "  Logs:         journalctl --user -u sell-monitor -f"
+    echo "  Service: $service_name"
+    echo "  File:    $service_file"
+    echo "  Logs:    journalctl --user -u $service_name -f"
     echo ""
 
     # Check if linger is enabled (required for service to survive logout/reboot)
-    if ! loginctl show-user "$(whoami)" --property=Linger | grep -q "Linger=yes"; then
+    if ! loginctl show-user "$(whoami)" --property=Linger 2>/dev/null | grep -q "Linger=yes"; then
         echo "Note: to keep the service running after logout and across reboots, run:"
         echo "  loginctl enable-linger $(whoami)"
     fi
 
     echo ""
     echo "To uninstall:"
-    echo "  systemctl --user disable --now sell-monitor"
+    echo "  systemctl --user disable --now $service_name"
     echo "  rm $service_file"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
-echo "Installing sell-monitor as a persistent service on $OS..."
+echo "Installing sell-monitor for '$COIN_ID' as a persistent service on $OS..."
 echo "Command: $UV run $MONITOR_SCRIPT ${MONITOR_ARGS[*]}"
 echo ""
 read -r -p "Proceed? [y/N] " confirm
