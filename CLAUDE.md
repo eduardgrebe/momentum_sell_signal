@@ -139,3 +139,7 @@ Configure the `email` block in `config.json` to receive SMTP alerts (STARTTLS on
 | `[TEST]` | `--test-email` flag — sends immediately regardless of signal; exits with error if email not configured |
 
 All alert and update emails include an HTML body (fixed-width font, history table, indicator breakdown) and `analysis.json` as an attachment.
+
+## License
+
+MIT — see `LICENSE`. This software is provided as-is with no warranty. It is **not financial advice**; use at your own risk.
