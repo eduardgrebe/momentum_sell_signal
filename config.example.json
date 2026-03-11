@@ -1,5 +1,6 @@
 {
-  "coin": "staked-ether",
+  "coin": "bitcoin",
+  "currency": "usd",
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,

@@ -95,7 +95,8 @@ cp config.example.json config.json
 
 ```json
 {
-  "coin": "staked-ether",
+  "coin": "bitcoin",
+  "currency": "usd",
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,
@@ -121,7 +122,8 @@ All fields are optional. Any value set here can be overridden by a command-line 
 
 | Field | Description | Default |
 |---|---|---|
-| `coin` | CoinGecko coin ID to monitor | `staked-ether` |
+| `coin` | CoinGecko coin ID to monitor | `bitcoin` |
+| `currency` | Reference currency for prices (any CoinGecko-supported currency, e.g. `usd`, `eur`, `gbp`, `btc`) | `usd` |
 | `days` | Sell deadline window in days | `30` |
 | `start_threshold` | Sell score threshold at the start of the window (days 0–10) | `70` |
 | `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |
@@ -152,6 +154,7 @@ uv run sell_monitor.py [OPTIONS]
 | Argument | Description |
 |---|---|
 | `--coin ID` | CoinGecko coin ID to monitor (e.g. `bitcoin`, `ethereum`, `staked-ether`) |
+| `--currency CODE` | Reference currency for prices (e.g. `usd`, `eur`, `gbp`, `btc`) (default: `usd`) |
 | `--days N` | Sell deadline window in days (default: 30) |
 | `--start-date YYYY-MM-DD` | Override the start date of the deadline window (default: today) |
 | `--loop` | Run continuously, checking on a fixed interval |

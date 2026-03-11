@@ -69,13 +69,14 @@ The full schedule can be changed by editing `TIME_DECAY_SCHEDULE` in the source.
 
 ## Data source
 
-CoinGecko free API (`/api/v3/coins/{coin_id}/market_chart`), no API key needed. Rate-limited to ~10–30 requests/minute. Retries up to 5 times with exponential backoff on 429 responses. The coin ID defaults to `staked-ether` and can be overridden with `--coin` or via `config.json`.
+CoinGecko free API (`/api/v3/coins/{coin_id}/market_chart`), no API key needed. Rate-limited to ~10–30 requests/minute. Retries up to 5 times with exponential backoff on 429 responses. The coin ID defaults to `bitcoin` and can be overridden with `--coin` or via `config.json`.
 
 ## CLI usage
 
 ```
-uv run sell_monitor.py                          # one-shot check (defaults to stETH)
-uv run sell_monitor.py --coin bitcoin           # monitor a different CoinGecko asset
+uv run sell_monitor.py                          # one-shot check (defaults to bitcoin/usd)
+uv run sell_monitor.py --coin ethereum          # monitor a different CoinGecko asset
+uv run sell_monitor.py --currency eur           # price in EUR instead of USD
 uv run sell_monitor.py --days 60               # set deadline window to 60 days
 uv run sell_monitor.py --start-date 2026-03-11  # override start date
 uv run sell_monitor.py --loop                   # continuous (default 1h interval)
@@ -92,7 +93,8 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
 
 ```json
 {
-  "coin": "staked-ether",
+  "coin": "bitcoin",
+  "currency": "usd",
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,
@@ -116,7 +118,8 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
 
 | Field | Description | Default |
 |---|---|---|
-| `coin` | CoinGecko coin ID | `staked-ether` |
+| `coin` | CoinGecko coin ID | `bitcoin` |
+| `currency` | Reference currency for prices (e.g. `usd`, `eur`, `gbp`, `btc`) | `usd` |
 | `days` | Deadline window in days | `30` |
 | `start_threshold` | Sell threshold for days 0–10 | `70` |
 | `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |

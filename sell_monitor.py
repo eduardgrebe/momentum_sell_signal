@@ -67,7 +67,7 @@ DEADLINE_DAYS = 30
 
 # CoinGecko free API endpoint (no key needed, rate-limited to ~10-30 req/min)
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
-COIN_ID = "staked-ether"  # CoinGecko ID — override with --coin
+COIN_ID = "bitcoin"  # CoinGecko ID — override with --coin
 VS_CURRENCY = "usd"
 
 # Indicator parameters
@@ -110,11 +110,12 @@ HISTORY_DAYS = _INDICATOR_WARMUP + DEADLINE_DAYS
 # Data fetching
 # ──────────────────────────────────────────────────────────────────────
 
-def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS) -> pd.DataFrame:
+def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS,
+               vs_currency: str = VS_CURRENCY) -> pd.DataFrame:
     """Fetch daily market data from CoinGecko and return a DataFrame."""
     # Use market_chart for price + volume (OHLC endpoint has limited granularity)
     url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart"
-    params = {"vs_currency": VS_CURRENCY, "days": days, "interval": "daily"}
+    params = {"vs_currency": vs_currency, "days": days, "interval": "daily"}
 
     for attempt in range(5):
         resp = requests.get(url, params=params, timeout=30)
@@ -348,20 +349,22 @@ def compute_history(df: pd.DataFrame, start_date: dt.date,
     return rows
 
 
-def print_history(history: list[dict]) -> None:
+def print_history(history: list[dict], currency: str = "USD") -> None:
     """Print a compact table of historical composite scores."""
+    cur = currency.upper()
     print("\n  Historical scores:")
-    print(f"  {'Date':<12} {'Price':>10}  {'Score':>6}  {'Thresh':>6}  Signal")
-    print("  " + "-" * 52)
+    print(f"  {'Date':<12} {f'Price ({cur})':>12}  {'Score':>6}  {'Thresh':>6}  Signal")
+    print("  " + "-" * 54)
     for h in history:
         sig = "SELL" if h["sell_signal"] else "hold"
-        print(f"  {h['date']:<12} ${h['price_usd']:>9,.2f}  "
+        print(f"  {h['date']:<12} {h['price_usd']:>12,.2f}  "
               f"{h['composite_score']:>6.1f}  {h['threshold']:>6}  {sig}")
 
 
 def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
             deadline_days: int = DEADLINE_DAYS,
-            start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> dict:
+            start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+            currency: str = VS_CURRENCY) -> dict:
     """Compute today's full analysis from an already-enriched dataframe."""
     latest = df.iloc[-1]
     prev = df.iloc[-2]
@@ -389,6 +392,7 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
 
     return {
         "coin_id": coin_id,
+        "currency": currency.upper(),
         "date": str(df.index[-1]),
         "price_usd": round(latest["close"], 2),
         "day_number": day_number,
@@ -439,14 +443,15 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
     ind = a["indicators"]
     signal_str = ">>> SELL SIGNAL <<<" if a["sell_signal"] else "hold"
 
+    cur = a.get("currency", "USD").upper()
     # History as a markdown table
-    header = f"| {'Date':<12} | {'Price (USD)':>12} | {'Score':>6} | {'Thresh':>6} | Signal |"
+    header = f"| {'Date':<12} | {f'Price ({cur})':>12} | {'Score':>6} | {'Thresh':>6} | Signal |"
     sep    = f"|{'-'*14}|{'-'*14}|{'-'*8}|{'-'*8}|{'-'*8}|"
     rows = [header, sep]
     for h in history:
         sig = "SELL" if h["sell_signal"] else "hold"
         rows.append(
-            f"| {h['date']:<12} | ${h['price_usd']:>11,.2f} | "
+            f"| {h['date']:<12} | {h['price_usd']:>12,.2f} | "
             f"{h['composite_score']:>6.1f} | {h['threshold']:>6} | {sig:<6} |"
         )
     table = "\n".join(rows)
@@ -454,7 +459,7 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
     # Today's breakdown
     breakdown = (
         f"## {a['coin_id']}  —  {a['date']}\n"
-        f"Price: ${a['price_usd']:,.2f}    "
+        f"Price: {a['price_usd']:,.2f} {cur}    "
         f"Day {a['day_number']} of {a['deadline_days']}  ({a['days_remaining']} days remaining)\n"
         f"\n"
         f"  RSI(14):       {ind['rsi']['value']:>6.1f}    score {ind['rsi']['score']:>5.1f}  (weight 25%)\n"
@@ -579,8 +584,9 @@ def send_startup_email(coin: str, start_date: dt.date, days: int, interval: int,
 
 def send_email_alert(analysis: dict, email_cfg: dict):
     """Send a sell-signal alert email if email is configured."""
+    cur = analysis.get('currency', 'USD')
     subject = (
-        f"[!ALERT!] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"[!ALERT!] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
     )
     _smtp_send(subject, analysis, email_cfg)
@@ -588,8 +594,9 @@ def send_email_alert(analysis: dict, email_cfg: dict):
 
 def send_daily_update_email(analysis: dict, email_cfg: dict):
     """Send a daily update email with a 7-day history table."""
+    cur = analysis.get('currency', 'USD')
     subject = (
-        f"[UPDATE] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"[UPDATE] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
     )
     _smtp_send(subject, analysis, email_cfg, history_limit=7)
@@ -597,8 +604,9 @@ def send_daily_update_email(analysis: dict, email_cfg: dict):
 
 def send_test_email(analysis: dict, email_cfg: dict):
     """Send a test email containing the current analysis including history."""
+    cur = analysis.get('currency', 'USD')
     subject = (
-        f"[TEST] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"[TEST] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
     )
     if not _smtp_send(subject, analysis, email_cfg):
@@ -612,7 +620,7 @@ def print_report(analysis: dict):
     sig = ">>> SELL SIGNAL <<<" if a["sell_signal"] else "    hold"
     print("=" * 60)
     print(f"  Sell Monitor [{a['coin_id']}] — {a['date']}")
-    print(f"  Price: ${a['price_usd']:,.2f}")
+    print(f"  Price: {a['price_usd']:,.2f} {a.get('currency', 'USD')}")
     print(f"  Day {a['day_number']} of {a['deadline_days']}  "
           f"({a['days_remaining']} days remaining)")
     print("-" * 60)
@@ -639,7 +647,8 @@ def print_report(analysis: dict):
 
 def run_once(start_date: dt.date, coin_id: str = COIN_ID,
              deadline_days: int = DEADLINE_DAYS,
-             start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> dict:
+             start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+             currency: str = VS_CURRENCY) -> dict:
     """Fetch data, compute indicators, print report, send alert if needed."""
     day_number = (dt.date.today() - start_date).days
     day_number = max(0, min(day_number, deadline_days))
@@ -647,15 +656,15 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
     fetch_days = _INDICATOR_WARMUP + deadline_days
     print(f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko "
           f"({_INDICATOR_WARMUP}d indicator warmup + {deadline_days}d window)...")
-    df = fetch_ohlc(coin_id=coin_id, days=fetch_days)
+    df = fetch_ohlc(coin_id=coin_id, days=fetch_days, vs_currency=currency)
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
     enrich_indicators(df)
     history = compute_history(df, start_date, deadline_days, start_threshold)
-    print_history(history)
+    print_history(history, currency=currency)
 
     analysis = analyse(df, day_number, coin_id=coin_id, deadline_days=deadline_days,
-                       start_threshold=start_threshold)
+                       start_threshold=start_threshold, currency=currency)
     analysis["history"] = history
     print_report(analysis)
 
@@ -667,6 +676,7 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
 
 
 def main():
+    global VS_CURRENCY, W_RSI, W_MACD, W_STOCH, W_MA_POS, W_VOLUME
     parser = argparse.ArgumentParser(description="stETH momentum sell-signal monitor")
     parser.add_argument("--loop", action="store_true",
                         help="Run continuously instead of one-shot")
@@ -674,6 +684,8 @@ def main():
                         help="Seconds between checks in loop mode (default: 3600)")
     parser.add_argument("--coin", type=str, default=None,
                         help=f"CoinGecko coin ID to monitor (default: {COIN_ID})")
+    parser.add_argument("--currency", type=str, default=None,
+                        help=f"Reference currency for prices (default: {VS_CURRENCY})")
     parser.add_argument("--days", type=int, default=None,
                         help=f"Sell deadline window in days (default: {DEADLINE_DAYS})")
     parser.add_argument("--start-date", type=str, default=None,
@@ -694,7 +706,7 @@ def main():
     start_threshold = cfg.get("start_threshold", TIME_DECAY_SCHEDULE[0][1])
 
     # Load indicator weights from config, falling back to module-level defaults
-    global W_RSI, W_MACD, W_STOCH, W_MA_POS, W_VOLUME
+    VS_CURRENCY = (args.currency or cfg.get("currency", VS_CURRENCY)).lower()
     w = cfg.get("weights", {})
     W_RSI    = w.get("rsi",       W_RSI)
     W_MACD   = w.get("macd",      W_MACD)
@@ -714,12 +726,12 @@ def main():
 
     if args.test_email:
         analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                            start_threshold=start_threshold)
+                            start_threshold=start_threshold, currency=VS_CURRENCY)
         send_test_email(analysis, email_cfg)
     elif not args.loop:
         print("Running in one-shot mode. Use --loop to keep the monitor active.")
         analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                            start_threshold=start_threshold)
+                            start_threshold=start_threshold, currency=VS_CURRENCY)
         if analysis["sell_signal"]:
             send_email_alert(analysis, email_cfg)
         if args.json:
@@ -728,6 +740,7 @@ def main():
     else:
         print(f"Starting continuous monitoring (interval: {args.interval}s)")
         print(f"Coin: {coin}")
+        print(f"Currency: {VS_CURRENCY.upper()}")
         print(f"Deadline: {start_date + dt.timedelta(days=days)} ({days} days)")
         print("Press Ctrl+C to stop.\n")
         send_startup_email(coin, start_date, days, args.interval,
@@ -738,7 +751,7 @@ def main():
         try:
             while True:
                 analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                                    start_threshold=start_threshold)
+                                    start_threshold=start_threshold, currency=VS_CURRENCY)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
                 now = dt.datetime.now()
