@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2026 Eduard Grebe
+# Copyright (c) 2026 Eduard Grebe <eduard@grebe.consulting>
 # Install sell-monitor as a persistent background service.
 #
 # macOS  → LaunchAgent  (~/Library/LaunchAgents/)

@@ -261,4 +261,6 @@ To find a coin ID, search for the asset on CoinGecko and use the identifier show
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Eduard Grebe.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Eduard Grebe <eduard@grebe.consulting>.
+
+**Author website:** [grebe.consulting](https://grebe.consulting)
