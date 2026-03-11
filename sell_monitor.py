@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Eduard Grebe
 """
-stETH Momentum-Based Sell Signal Monitor
-=========================================
+Crypto Momentum-Based Sell Signal Monitor
+==========================================
 Computes a composite momentum score from RSI, MACD, Stochastic, MA position,
 and volume. Compares the score against a time-decaying threshold so that the
-sell criteria loosen as the 30-day deadline approaches.
+sell criteria loosen as the deadline approaches.
 
 Usage:
     uv run sell_monitor.py                        # one-shot check
@@ -16,8 +16,9 @@ Usage:
 
 Configuration:
     Copy config.example.json to config.json and fill in your values.
-    config.json supports: coin, days, and email (from/to/smtp_host/smtp_port/
-    smtp_user/smtp_pass). CLI arguments override config.json values.
+    config.json supports: coin, days, start_threshold, daily_update,
+    weights (rsi/macd/stoch/ma_pos/volume), and email credentials.
+    CLI arguments override config.json values.
 
 Disclaimer: This is NOT financial advice. Technical indicators are
 probabilistic tools, not crystal balls. Use at your own risk.

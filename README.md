@@ -1,4 +1,4 @@
-# Sell Monitor
+# Crypto Momentum-Based Sell Signal Monitor
 
 > **Note:** This software was vibe-coded using [Claude Code](https://claude.ai/claude-code).
 
@@ -99,6 +99,13 @@ cp config.example.json config.json
   "days": 30,
   "start_threshold": 70,
   "daily_update": false,
+  "weights": {
+    "rsi":    0.25,
+    "macd":   0.25,
+    "stoch":  0.20,
+    "ma_pos": 0.15,
+    "volume": 0.15
+  },
   "email": {
     "from": "alerts@example.com",
     "to": "you@example.com",
@@ -118,6 +125,11 @@ All fields are optional. Any value set here can be overridden by a command-line 
 | `days` | Sell deadline window in days | `30` |
 | `start_threshold` | Sell score threshold at the start of the window (days 0–10) | `70` |
 | `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |
+| `weights.rsi` | RSI indicator weight | `0.25` |
+| `weights.macd` | MACD histogram indicator weight | `0.25` |
+| `weights.stoch` | Stochastic indicator weight | `0.20` |
+| `weights.ma_pos` | MA position indicator weight | `0.15` |
+| `weights.volume` | Volume ratio indicator weight | `0.15` |
 | `email.from` | Sender address | — |
 | `email.to` | Recipient address | — |
 | `email.smtp_host` | SMTP server hostname | — |
@@ -179,13 +191,15 @@ On each run the script prints a historical score table covering the last `days` 
 
 Five indicators each produce a sub-score from 0 to 100, where a higher score means it is a better time to sell:
 
-| Indicator | Weight | What it measures |
-|---|---|---|
-| RSI(14) | 25% | Overbought/oversold momentum |
-| MACD(12,26,9) histogram | 25% | Trend momentum direction and rollover |
-| Stochastic(14,3,3) | 20% | Price position within recent range, plus crossovers |
-| Price vs SMA(20)/SMA(50) | 15% | Whether price is selling into strength above moving averages |
-| Volume ratio (current / 20-day avg) | 15% | Participation confirming the move |
+| Indicator | Default weight | Config key | What it measures |
+|---|---|---|---|
+| RSI(14) | 25% | `weights.rsi` | Overbought/oversold momentum |
+| MACD(12,26,9) histogram | 25% | `weights.macd` | Trend momentum direction and rollover |
+| Stochastic(14,3,3) | 20% | `weights.stoch` | Price position within recent range, plus crossovers |
+| Price vs SMA(20)/SMA(50) | 15% | `weights.ma_pos` | Whether price is selling into strength above moving averages |
+| Volume ratio (current / 20-day avg) | 15% | `weights.volume` | Participation confirming the move |
+
+Weights can be customised in `config.json` (see the `weights` block below). They should sum to 1.0; a warning is printed at startup if they don't. Any key omitted from `weights` falls back to the default.
 
 ### Time-decay thresholds
 
@@ -239,3 +253,9 @@ To find a coin ID, search for the asset on CoinGecko and use the identifier show
 - `staked-ether` — Lido Staked Ether (stETH)
 - `ethereum` — Ethereum
 - `bitcoin` — Bitcoin
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Eduard Grebe.
