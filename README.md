@@ -29,19 +29,47 @@ This installs `uv` to `~/.local/bin` if it is not already available, then instal
 The easiest way to run is via `run.sh`, which automatically runs `setup.sh` if setup has not been done yet:
 
 ```bash
-./run.sh
-```
-
-All command-line arguments are forwarded:
-
-```bash
-./run.sh --coin bitcoin --days 14 --loop
+./run.sh                            # one-shot check
+./run.sh --loop                     # continuous monitoring
+./run.sh --coin bitcoin --days 14   # with arguments
 ```
 
 Alternatively, once setup is complete you can invoke the script directly with `uv`:
 
 ```bash
 uv run sell_monitor.py
+```
+
+### Installing as a persistent service
+
+To have the monitor run automatically in the background and survive reboots, use `install-service.sh`. It detects your OS and installs either a macOS LaunchAgent or a Linux systemd user service.
+
+```bash
+bash install-service.sh                        # default settings
+bash install-service.sh --coin bitcoin         # with extra arguments
+bash install-service.sh --interval 1800        # check every 30 minutes
+```
+
+The script shows the exact command it will install and asks for confirmation before proceeding.
+
+**macOS** — installs to `~/Library/LaunchAgents/com.sell-monitor.plist`. Logs are written to `~/Library/Logs/sell-monitor.log`.
+
+**Linux** — installs to `~/.config/systemd/user/sell-monitor.service`. View logs with `journalctl --user -u sell-monitor -f`. To keep the service running after logout and across reboots, also run:
+
+```bash
+loginctl enable-linger $(whoami)
+```
+
+To uninstall:
+
+```bash
+# macOS
+launchctl unload ~/Library/LaunchAgents/com.sell-monitor.plist
+rm ~/Library/LaunchAgents/com.sell-monitor.plist
+
+# Linux
+systemctl --user disable --now sell-monitor
+rm ~/.config/systemd/user/sell-monitor.service
 ```
 
 ---

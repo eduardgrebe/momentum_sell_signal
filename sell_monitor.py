@@ -28,6 +28,8 @@ import os
 import smtplib
 import sys
 import time
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
@@ -329,7 +331,7 @@ def compute_history(df: pd.DataFrame, start_date: dt.date,
             "day_number": day_num,
             "composite_score": round(score, 1),
             "threshold": threshold,
-            "sell_signal": score >= threshold,
+            "sell_signal": bool(score >= threshold),
         })
     return rows
 
@@ -370,7 +372,7 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
     )
 
     threshold = get_threshold(day_number)
-    sell_signal = composite >= threshold
+    sell_signal = bool(composite >= threshold)
 
     return {
         "coin_id": coin_id,
@@ -413,8 +415,59 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
 # Alerting
 # ──────────────────────────────────────────────────────────────────────
 
-def _smtp_send(subject: str, body: str, email_cfg: dict) -> bool:
-    """Connect and send one email. Returns True on success, False if not configured."""
+def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> str:
+    """Build an HTML email body with a monospace font, markdown history table,
+    and today's indicator breakdown. history_limit trims the table to the most
+    recent N rows (None = all rows)."""
+    a = analysis
+    history = a.get("history", [])
+    if history_limit is not None:
+        history = history[-history_limit:]
+    ind = a["indicators"]
+    signal_str = ">>> SELL SIGNAL <<<" if a["sell_signal"] else "hold"
+
+    # History as a markdown table
+    header = f"| {'Date':<12} | {'Price (USD)':>12} | {'Score':>6} | {'Thresh':>6} | Signal |"
+    sep    = f"|{'-'*14}|{'-'*14}|{'-'*8}|{'-'*8}|{'-'*8}|"
+    rows = [header, sep]
+    for h in history:
+        sig = "SELL" if h["sell_signal"] else "hold"
+        rows.append(
+            f"| {h['date']:<12} | ${h['price_usd']:>11,.2f} | "
+            f"{h['composite_score']:>6.1f} | {h['threshold']:>6} | {sig:<6} |"
+        )
+    table = "\n".join(rows)
+
+    # Today's breakdown
+    breakdown = (
+        f"## {a['coin_id']}  —  {a['date']}\n"
+        f"Price: ${a['price_usd']:,.2f}    "
+        f"Day {a['day_number']} of {a['deadline_days']}  ({a['days_remaining']} days remaining)\n"
+        f"\n"
+        f"  RSI(14):       {ind['rsi']['value']:>6.1f}    score {ind['rsi']['score']:>5.1f}  (weight 25%)\n"
+        f"  MACD Hist:  {ind['macd_histogram']['value']:>10.4f}    score {ind['macd_histogram']['score']:>5.1f}  (weight 25%)\n"
+        f"  Stoch %K/%D: {ind['stochastic']['k']:>5.1f}/{ind['stochastic']['d']:<5.1f}  score {ind['stochastic']['score']:>5.1f}  (weight 20%)\n"
+        f"  MA Position:   SMA20={ind['ma_position']['sma20']}  SMA50={ind['ma_position']['sma50']}  score {ind['ma_position']['score']:>5.1f}  (weight 15%)\n"
+        f"  Volume Ratio:                    score {ind['volume']['score']:>5.1f}  (weight 15%)\n"
+        f"\n"
+        f"  COMPOSITE SCORE:  {a['composite_score']:>5.1f}  /  threshold {a['threshold']}\n"
+        f"  DECISION:  {signal_str}\n"
+    )
+
+    label = f"last {len(history)} days" if history_limit is None else f"last {len(history)} days"
+    content = f"## Historical Scores ({label})\n\n{table}\n\n{'-'*60}\n\n{breakdown}"
+
+    return (
+        "<html><body style=\"font-family: monospace; font-size: 14px;\">"
+        f"<pre>{content}</pre>"
+        "</body></html>"
+    )
+
+
+def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
+               history_limit: Optional[int] = None) -> bool:
+    """Build and send a multipart email with an HTML body and JSON attachment.
+    Returns True on success, False if not configured."""
     email_from = email_cfg.get("from")
     email_to = email_cfg.get("to")
     smtp_host = email_cfg.get("smtp_host")
@@ -425,10 +478,17 @@ def _smtp_send(subject: str, body: str, email_cfg: dict) -> bool:
     if not all([email_from, email_to, smtp_host, smtp_pass]):
         return False
 
-    msg = MIMEText(body)
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = email_from
     msg["To"] = email_to
+
+    msg.attach(MIMEText(_build_email_html(analysis, history_limit=history_limit), "html"))
+
+    json_bytes = json.dumps(analysis, indent=2).encode()
+    attachment = MIMEApplication(json_bytes, Name="analysis.json")
+    attachment["Content-Disposition"] = 'attachment; filename="analysis.json"'
+    msg.attach(attachment)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as server:
@@ -445,21 +505,28 @@ def _smtp_send(subject: str, body: str, email_cfg: dict) -> bool:
 def send_email_alert(analysis: dict, email_cfg: dict):
     """Send a sell-signal alert email if email is configured."""
     subject = (
-        f"{'🟢 SELL SIGNAL' if analysis['sell_signal'] else '🔴 HOLD'} "
-        f"— {analysis['coin_id']} ${analysis['price_usd']} "
-        f"(score {analysis['composite_score']}/{analysis['threshold']})"
+        f"[!ALERT!] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"— score {analysis['composite_score']}/{analysis['threshold']}"
     )
-    if not _smtp_send(subject, json.dumps(analysis, indent=2), email_cfg):
-        pass  # not configured — silently skip
+    _smtp_send(subject, analysis, email_cfg)
+
+
+def send_daily_update_email(analysis: dict, email_cfg: dict):
+    """Send a daily update email with a 7-day history table."""
+    subject = (
+        f"[UPDATE] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"— score {analysis['composite_score']}/{analysis['threshold']}"
+    )
+    _smtp_send(subject, analysis, email_cfg, history_limit=7)
 
 
 def send_test_email(analysis: dict, email_cfg: dict):
     """Send a test email containing the current analysis including history."""
     subject = (
-        f"[TEST] Sell Monitor — {analysis['coin_id']} ${analysis['price_usd']} "
-        f"(score {analysis['composite_score']}/{analysis['threshold']})"
+        f"[TEST] {analysis['coin_id']} ${analysis['price_usd']} "
+        f"— score {analysis['composite_score']}/{analysis['threshold']}"
     )
-    if not _smtp_send(subject, json.dumps(analysis, indent=2), email_cfg):
+    if not _smtp_send(subject, analysis, email_cfg):
         print("  Email not configured — check config.json.", file=sys.stderr)
         sys.exit(1)
 
@@ -502,7 +569,8 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
     day_number = max(0, min(day_number, deadline_days))
 
     fetch_days = _INDICATOR_WARMUP + deadline_days
-    print(f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko...")
+    print(f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko "
+          f"({_INDICATOR_WARMUP}d indicator warmup + {deadline_days}d window)...")
     df = fetch_ohlc(coin_id=coin_id, days=fetch_days)
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
@@ -541,6 +609,7 @@ def main():
 
     cfg = load_config()
     email_cfg = cfg.get("email", {})
+    daily_update = cfg.get("daily_update", False)
 
     # CLI > config.json > built-in defaults
     coin = args.coin or cfg.get("coin", COIN_ID)
@@ -556,29 +625,35 @@ def main():
         analysis = run_once(start_date, coin_id=coin, deadline_days=days)
         send_test_email(analysis, email_cfg)
     elif not args.loop:
+        print("Running in one-shot mode. Use --loop to keep the monitor active.")
         analysis = run_once(start_date, coin_id=coin, deadline_days=days)
         if analysis["sell_signal"]:
             send_email_alert(analysis, email_cfg)
         if args.json:
             print("\n" + json.dumps(analysis, indent=2))
+        print("\n(One-shot complete. Run with --loop for continuous monitoring.)")
     else:
         print(f"Starting continuous monitoring (interval: {args.interval}s)")
         print(f"Coin: {coin}")
         print(f"Deadline: {start_date + dt.timedelta(days=days)} ({days} days)")
         print("Press Ctrl+C to stop.\n")
         last_alert_date: Optional[dt.date] = None
+        last_update_date: Optional[dt.date] = None
         try:
             while True:
                 analysis = run_once(start_date, coin_id=coin, deadline_days=days)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
+                today = dt.date.today()
                 if analysis["sell_signal"]:
                     print("\nSell signal triggered! Continuing to monitor "
                           "in case you want to wait for an even better window.")
-                    today = dt.date.today()
                     if last_alert_date != today:
                         send_email_alert(analysis, email_cfg)
                         last_alert_date = today
+                if daily_update and last_update_date != today:
+                    send_daily_update_email(analysis, email_cfg)
+                    last_update_date = today
                 time.sleep(args.interval)
         except KeyboardInterrupt:
             print("\nMonitoring stopped.")

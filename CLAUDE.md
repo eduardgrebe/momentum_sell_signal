@@ -10,6 +10,7 @@ Momentum-based sell signal monitor for any CoinGecko-listed asset. Computes a co
 - `config.json` — local config with credentials (git-ignored, never commit)
 - `setup.sh` — installs `uv` and syncs dependencies on a new machine
 - `run.sh` — runs the monitor, calling `setup.sh` only if needed
+- `install-service.sh` — installs the monitor as a persistent background service (macOS LaunchAgent or Linux systemd user service)
 
 ## Setup
 
