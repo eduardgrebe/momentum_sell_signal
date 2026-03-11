@@ -1,10 +1,12 @@
 # Crypto Momentum-Based Sell Signal Monitor
 
-> **Note:** This software was vibe-coded using [Claude Code](https://claude.ai/claude-code).
+> **Note:** This software was entirely vibe-coded using [Claude Code](https://claude.ai/claude-code). It is mostly a small experiment for my own amusement, and not intended to be useful to serious traders. Claude quite impressed me with its engineering decisions, which required some direction from me, but less than I thought it might. I mostly used Sonnet 4.6.
 
-A momentum-based sell signal monitor for crypto assets. It fetches daily price and volume data from CoinGecko, computes five technical indicators, and produces a composite score (0–100). The score is compared against a time-decaying threshold that loosens as a configurable deadline approaches — so it demands stronger signals early on and accepts weaker ones as time runs out.
+A momentum-based sell signal monitor for crypto assets. It fetches regular price and volume data from CoinGecko, computes five technical indicators, and produces a composite score (0–100). The score is compared against a time-decaying threshold that loosens as a configurable deadline approaches — so it demands stronger signals early on and accepts weaker ones as time runs out.
 
 > **Disclaimer:** This software is provided for informational purposes only and does not constitute financial advice. Technical indicators are probabilistic tools, not crystal balls, and past market behaviour is no guarantee of future results. The author(s) accept no liability whatsoever for any financial loss, damages, or other adverse consequences — direct or indirect — arising from the use of or reliance on this software. You are solely responsible for your own investment decisions. Use at your own risk.
+
+**Author information:** Eduard Grebe, [Eduard Grebe Consulting](https://grebe.consulting).
 
 ---
 
@@ -253,14 +255,13 @@ All emails use a fixed-width font with a history table and a full indicator brea
 Price and volume data is fetched from the [CoinGecko free API](https://www.coingecko.com/en/api). No API key is required. The API is rate-limited to approximately 10–30 requests per minute; the script retries automatically with exponential backoff if rate-limited.
 
 To find a coin ID, search for the asset on CoinGecko and use the identifier shown in the URL, for example:
-- `staked-ether` — Lido Staked Ether (stETH)
-- `ethereum` — Ethereum
 - `bitcoin` — Bitcoin
+- `ethereum` — Ethereum
+- `staked-ether` — Lido Staked Ether (stETH)
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Eduard Grebe <eduard@grebe.consulting>.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Eduard Grebe.
 
-**Author website:** [grebe.consulting](https://grebe.consulting)
