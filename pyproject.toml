@@ -1,7 +1,7 @@
 [project]
-name = "steth-sell-monitor"
-version = "0.1.0"
-description = "Momentum-based sell signal monitor for stETH using composite technical indicators with time-decaying thresholds."
+name = "crypto-momentum-sell-monitor"
+version = "0.2.0"
+description = "Momentum-based sell signal monitor for crypto assets using composite technical indicators with time-decaying thresholds."
 requires-python = ">=3.10"
 dependencies = [
     "requests>=2.31",
