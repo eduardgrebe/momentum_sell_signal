@@ -36,8 +36,8 @@ fi
 # ── Build the command (always includes --loop; caller adds extras) ────────────
 MONITOR_ARGS=("--loop" "$@")
 
-# ── Derive service identifier from --coin (default: staked-ether) ────────────
-COIN_ID="staked-ether"
+# ── Derive service identifier from --coin (default: bitcoin) ─────────────────
+COIN_ID="bitcoin"
 args=("$@")
 for (( i=0; i<${#args[@]}; i++ )); do
     if [[ "${args[$i]}" == "--coin" && $((i+1)) -lt ${#args[@]} ]]; then
@@ -169,8 +169,50 @@ EOF
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Check for and optionally remove an existing service for the same coin
+# ─────────────────────────────────────────────────────────────────────────────
+check_existing() {
+    local exists=0
+
+    if [[ "$OS" == "macos" ]]; then
+        local label="com.sell-monitor.$SERVICE_SUFFIX"
+        local plist="$HOME/Library/LaunchAgents/${label}.plist"
+        [[ -f "$plist" ]] && exists=1
+    else
+        local service_file="$HOME/.config/systemd/user/sell-monitor-${SERVICE_SUFFIX}.service"
+        [[ -f "$service_file" ]] && exists=1
+    fi
+
+    if [[ $exists -eq 0 ]]; then
+        return
+    fi
+
+    echo "A service for '$COIN_ID' is already installed."
+    read -r -p "Remove the existing service and continue? [y/N] " remove
+    if [[ ! "$remove" =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 0
+    fi
+
+    if [[ "$OS" == "macos" ]]; then
+        local plist="$HOME/Library/LaunchAgents/com.sell-monitor.${SERVICE_SUFFIX}.plist"
+        launchctl unload "$plist" 2>/dev/null || true
+        rm -f "$plist"
+        echo "Existing LaunchAgent removed."
+    else
+        local service_name="sell-monitor-${SERVICE_SUFFIX}"
+        systemctl --user disable --now "$service_name" 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/${service_name}.service"
+        systemctl --user daemon-reload
+        echo "Existing systemd service removed."
+    fi
+    echo ""
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
+check_existing
 echo "Installing sell-monitor for '$COIN_ID' as a persistent service on $OS..."
 echo "Command: $UV run $MONITOR_SCRIPT ${MONITOR_ARGS[*]}"
 echo ""
