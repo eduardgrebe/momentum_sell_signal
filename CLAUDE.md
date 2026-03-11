@@ -42,18 +42,22 @@ Five indicators each produce a 0–100 sub-score (higher = better time to sell):
 | Price vs SMA(20)/SMA(50) | 15% | Selling into strength above moving averages |
 | Volume ratio (current / 20d avg) | 15% | Participation confirming moves |
 
-The weighted composite is compared against a threshold that decays on this schedule (default):
+The weighted composite is compared against a time-decaying threshold. Bracket boundaries scale proportionally with `deadline_days`, so the schedule always spans the full window. The starting threshold is configurable via `start_threshold` in `config.json` (default 70); the intermediate thresholds are fixed:
 
-- Days 0–10: threshold 70 (sell only into strong rallies)
-- Days 11–20: threshold 55
-- Days 21–25: threshold 40
-- Days 26–29: threshold 25
-- Day 30: threshold 0 (sell regardless)
+| Window proportion | Days (default 30) | Default threshold | Meaning |
+|---|---|---|---|
+| 0–33% | 0–10 | 70 (`start_threshold`) | Sell only into strong rallies |
+| 34–67% | 11–20 | 55 | Moderately selective |
+| 68–83% | 21–25 | 40 | Take reasonable opportunities |
+| 84–97% | 26–29 | 25 | Sell on almost any uptick |
+| 100% | 30 | 0 | Sell regardless |
+
+The full schedule can be changed by editing `TIME_DECAY_SCHEDULE` in the source.
 
 ## Key configuration (top of `sell_monitor.py`)
 
-- `DEADLINE_DAYS` — default window length (30); override with `--days`
-- `TIME_DECAY_SCHEDULE` — list of (max_day, threshold) tuples
+- `DEADLINE_DAYS` — default window length (30); override with `--days` or `config.json`
+- `TIME_DECAY_SCHEDULE` — list of (max_day, threshold) tuples; first entry's threshold is overridden by `start_threshold`
 - `W_RSI`, `W_MACD`, `W_STOCH`, `W_MA_POS`, `W_VOLUME` — indicator weights (must sum to 1.0)
 - Indicator periods: `RSI_PERIOD`, `MACD_FAST/SLOW/SIGNAL`, `STOCH_K_PERIOD/D_PERIOD/SMOOTH`, `SMA_SHORT/LONG`
 
@@ -84,6 +88,8 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
 {
   "coin": "staked-ether",
   "days": 30,
+  "start_threshold": 70,
+  "daily_update": false,
   "email": {
     "from": "alerts@example.com",
     "to": "you@example.com",
@@ -94,6 +100,14 @@ Copy `config.example.json` to `config.json` (git-ignored) and fill in your value
   }
 }
 ```
+
+| Field | Description | Default |
+|---|---|---|
+| `coin` | CoinGecko coin ID | `staked-ether` |
+| `days` | Deadline window in days | `30` |
+| `start_threshold` | Sell threshold for days 0–10 | `70` |
+| `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |
+| `email.*` | SMTP credentials for alerts | — |
 
 ## Email alerts
 

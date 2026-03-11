@@ -282,11 +282,18 @@ def score_volume(current_vol: float, avg_vol: float) -> float:
 # Composite score and decision
 # ──────────────────────────────────────────────────────────────────────
 
-def get_threshold(day_number: int) -> int:
-    """Return the sell threshold for the given day (0-indexed from start)."""
+def get_threshold(day_number: int,
+                  deadline_days: int = DEADLINE_DAYS,
+                  start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> int:
+    """Return the sell threshold for the given day (0-indexed from start).
+    Bracket boundaries scale proportionally with deadline_days.
+    start_threshold overrides the value for the first bracket."""
+    scale = deadline_days / DEADLINE_DAYS
+    first = True
     for max_day, threshold in TIME_DECAY_SCHEDULE:
-        if day_number <= max_day:
-            return threshold
+        if day_number <= round(max_day * scale):
+            return start_threshold if first else threshold
+        first = False
     return 0  # past deadline: always sell
 
 
@@ -315,7 +322,8 @@ def composite_score_at(df: pd.DataFrame, i: int) -> float:
 
 
 def compute_history(df: pd.DataFrame, start_date: dt.date,
-                    deadline_days: int) -> list[dict]:
+                    deadline_days: int,
+                    start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> list[dict]:
     """Return composite scores for the last deadline_days rows of an enriched df."""
     n = len(df)
     rows = []
@@ -323,7 +331,7 @@ def compute_history(df: pd.DataFrame, start_date: dt.date,
         row = df.iloc[i]
         date = df.index[i]
         day_num = (date - start_date).days
-        threshold = get_threshold(max(0, min(day_num, deadline_days)))
+        threshold = get_threshold(max(0, min(day_num, deadline_days)), deadline_days, start_threshold)
         score = composite_score_at(df, i)
         rows.append({
             "date": str(date),
@@ -348,7 +356,8 @@ def print_history(history: list[dict]) -> None:
 
 
 def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
-            deadline_days: int = DEADLINE_DAYS) -> dict:
+            deadline_days: int = DEADLINE_DAYS,
+            start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> dict:
     """Compute today's full analysis from an already-enriched dataframe."""
     latest = df.iloc[-1]
     prev = df.iloc[-2]
@@ -371,7 +380,7 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
         + W_VOLUME * s_vol
     )
 
-    threshold = get_threshold(day_number)
+    threshold = get_threshold(day_number, deadline_days, start_threshold)
     sell_signal = bool(composite >= threshold)
 
     return {
@@ -563,7 +572,8 @@ def print_report(analysis: dict):
 # ──────────────────────────────────────────────────────────────────────
 
 def run_once(start_date: dt.date, coin_id: str = COIN_ID,
-             deadline_days: int = DEADLINE_DAYS) -> dict:
+             deadline_days: int = DEADLINE_DAYS,
+             start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> dict:
     """Fetch data, compute indicators, print report, send alert if needed."""
     day_number = (dt.date.today() - start_date).days
     day_number = max(0, min(day_number, deadline_days))
@@ -575,10 +585,11 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
     enrich_indicators(df)
-    history = compute_history(df, start_date, deadline_days)
+    history = compute_history(df, start_date, deadline_days, start_threshold)
     print_history(history)
 
-    analysis = analyse(df, day_number, coin_id=coin_id, deadline_days=deadline_days)
+    analysis = analyse(df, day_number, coin_id=coin_id, deadline_days=deadline_days,
+                       start_threshold=start_threshold)
     analysis["history"] = history
     print_report(analysis)
 
@@ -614,6 +625,7 @@ def main():
     # CLI > config.json > built-in defaults
     coin = args.coin or cfg.get("coin", COIN_ID)
     days = args.days or cfg.get("days", DEADLINE_DAYS)
+    start_threshold = cfg.get("start_threshold", TIME_DECAY_SCHEDULE[0][1])
 
     start_date = (
         dt.date.fromisoformat(args.start_date) if args.start_date else dt.date.today()
@@ -622,11 +634,13 @@ def main():
         print(f"Start date overridden to {start_date}")
 
     if args.test_email:
-        analysis = run_once(start_date, coin_id=coin, deadline_days=days)
+        analysis = run_once(start_date, coin_id=coin, deadline_days=days,
+                            start_threshold=start_threshold)
         send_test_email(analysis, email_cfg)
     elif not args.loop:
         print("Running in one-shot mode. Use --loop to keep the monitor active.")
-        analysis = run_once(start_date, coin_id=coin, deadline_days=days)
+        analysis = run_once(start_date, coin_id=coin, deadline_days=days,
+                            start_threshold=start_threshold)
         if analysis["sell_signal"]:
             send_email_alert(analysis, email_cfg)
         if args.json:
@@ -641,7 +655,8 @@ def main():
         last_update_date: Optional[dt.date] = None
         try:
             while True:
-                analysis = run_once(start_date, coin_id=coin, deadline_days=days)
+                analysis = run_once(start_date, coin_id=coin, deadline_days=days,
+                                    start_threshold=start_threshold)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
                 today = dt.date.today()

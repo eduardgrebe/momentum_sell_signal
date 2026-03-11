@@ -88,6 +88,8 @@ cp config.example.json config.json
 {
   "coin": "staked-ether",
   "days": 30,
+  "start_threshold": 70,
+  "daily_update": false,
   "email": {
     "from": "alerts@example.com",
     "to": "you@example.com",
@@ -105,6 +107,8 @@ All fields are optional. Any value set here can be overridden by a command-line 
 |---|---|---|
 | `coin` | CoinGecko coin ID to monitor | `staked-ether` |
 | `days` | Sell deadline window in days | `30` |
+| `start_threshold` | Sell score threshold at the start of the window (days 0–10) | `70` |
+| `daily_update` | Send a daily `[UPDATE]` email in loop mode | `false` |
 | `email.from` | Sender address | — |
 | `email.to` | Recipient address | — |
 | `email.smtp_host` | SMTP server hostname | — |
@@ -176,17 +180,19 @@ Five indicators each produce a sub-score from 0 to 100, where a higher score mea
 
 ### Time-decay thresholds
 
-The composite score is compared against a threshold that falls over time:
+The composite score is compared against a threshold that falls over time. The bracket boundaries **scale proportionally with the `days` setting**, so the schedule always spans the full window regardless of its length. The threshold for the first bracket is configurable via `start_threshold` in `config.json`; the remaining steps are fixed:
 
-| Days elapsed | Threshold | Meaning |
-|---|---|---|
-| 0–10 | 70 | Sell only into strong momentum |
-| 11–20 | 55 | Moderately selective |
-| 21–25 | 40 | Take reasonable opportunities |
-| 26–29 | 25 | Sell on almost any uptick |
-| 30 | 0 | Sell regardless |
+| Window proportion | Days (default 30) | Days (example 60) | Threshold | Configurable? |
+|---|---|---|---|---|
+| 0–33% | 0–10 | 0–20 | 70 | Yes — `start_threshold` |
+| 34–67% | 11–20 | 21–40 | 55 | No |
+| 68–83% | 21–25 | 41–50 | 40 | No |
+| 84–97% | 26–29 | 51–58 | 25 | No |
+| 100% | 30 | 60 | 0 | No |
 
-When the composite score meets or exceeds the threshold, a **SELL SIGNAL** is triggered.
+For example, setting `"start_threshold": 55` makes the monitor less strict during the first third of the window — useful if you expect a weaker rally or want to act sooner.
+
+When the composite score meets or exceeds the current threshold, a **SELL SIGNAL** is triggered.
 
 ---
 

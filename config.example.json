@@ -1,6 +1,7 @@
 {
   "coin": "staked-ether",
   "days": 30,
+  "start_threshold": 70,
   "daily_update": false,
   "email": {
     "from": "alerts@example.com",
