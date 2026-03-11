@@ -48,7 +48,7 @@ DEADLINE_DAYS = 30
 
 # CoinGecko free API endpoint (no key needed, rate-limited to ~10-30 req/min)
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
-COIN_ID = "staked-ether"  # CoinGecko ID for stETH
+COIN_ID = "staked-ether"  # CoinGecko ID — override with --coin
 VS_CURRENCY = "usd"
 
 # Indicator parameters
@@ -271,9 +271,8 @@ def get_threshold(day_number: int) -> int:
     return 0  # past deadline: always sell
 
 
-def analyse(df: pd.DataFrame, day_number: int) -> dict:
-    """Run all indicators on the dataframe and return a full analysis dict."""
-    # Compute indicators
+def enrich_indicators(df: pd.DataFrame) -> None:
+    """Add all indicator columns to df in-place."""
     df["rsi"] = compute_rsi(df["close"])
     macd_line, signal_line, histogram = compute_macd(df["close"])
     df["macd"], df["macd_signal"], df["macd_hist"] = macd_line, signal_line, histogram
@@ -282,6 +281,56 @@ def analyse(df: pd.DataFrame, day_number: int) -> dict:
     df["sma50"] = df["close"].rolling(window=SMA_LONG).mean()
     df["vol_avg_20"] = df["volume"].rolling(window=20).mean()
 
+
+def composite_score_at(df: pd.DataFrame, i: int) -> float:
+    """Compute the composite sell score for row i (requires i >= 1)."""
+    row, prev = df.iloc[i], df.iloc[i - 1]
+    s_rsi = score_rsi(row["rsi"])
+    s_macd = score_macd(row["macd_hist"], prev["macd_hist"])
+    s_stoch = score_stochastic(row["stoch_k"], row["stoch_d"],
+                               prev["stoch_k"], prev["stoch_d"])
+    s_ma = score_ma_position(row["close"], row["sma20"], row["sma50"])
+    s_vol = score_volume(row["volume"], row["vol_avg_20"])
+    return (W_RSI * s_rsi + W_MACD * s_macd + W_STOCH * s_stoch
+            + W_MA_POS * s_ma + W_VOLUME * s_vol)
+
+
+def compute_history(df: pd.DataFrame, start_date: dt.date,
+                    deadline_days: int) -> list[dict]:
+    """Return composite scores for the last deadline_days rows of an enriched df."""
+    n = len(df)
+    rows = []
+    for i in range(max(1, n - deadline_days), n):
+        row = df.iloc[i]
+        date = df.index[i]
+        day_num = (date - start_date).days
+        threshold = get_threshold(max(0, min(day_num, deadline_days)))
+        score = composite_score_at(df, i)
+        rows.append({
+            "date": str(date),
+            "price_usd": round(row["close"], 2),
+            "day_number": day_num,
+            "composite_score": round(score, 1),
+            "threshold": threshold,
+            "sell_signal": score >= threshold,
+        })
+    return rows
+
+
+def print_history(history: list[dict]) -> None:
+    """Print a compact table of historical composite scores."""
+    print("\n  Historical scores:")
+    print(f"  {'Date':<12} {'Price':>10}  {'Score':>6}  {'Thresh':>6}  Signal")
+    print("  " + "-" * 52)
+    for h in history:
+        sig = "SELL" if h["sell_signal"] else "hold"
+        print(f"  {h['date']:<12} ${h['price_usd']:>9,.2f}  "
+              f"{h['composite_score']:>6.1f}  {h['threshold']:>6}  {sig}")
+
+
+def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
+            deadline_days: int = DEADLINE_DAYS) -> dict:
+    """Compute today's full analysis from an already-enriched dataframe."""
     latest = df.iloc[-1]
     prev = df.iloc[-2]
 
@@ -307,10 +356,12 @@ def analyse(df: pd.DataFrame, day_number: int) -> dict:
     sell_signal = composite >= threshold
 
     return {
+        "coin_id": coin_id,
         "date": str(df.index[-1]),
         "price_usd": round(latest["close"], 2),
         "day_number": day_number,
-        "days_remaining": DEADLINE_DAYS - day_number,
+        "deadline_days": deadline_days,
+        "days_remaining": deadline_days - day_number,
         "threshold": threshold,
         "composite_score": round(composite, 1),
         "sell_signal": sell_signal,
@@ -384,9 +435,9 @@ def print_report(analysis: dict):
     a = analysis
     sig = ">>> SELL SIGNAL <<<" if a["sell_signal"] else "    hold"
     print("=" * 60)
-    print(f"  stETH Sell Monitor — {a['date']}")
+    print(f"  Sell Monitor [{a['coin_id']}] — {a['date']}")
     print(f"  Price: ${a['price_usd']:,.2f}")
-    print(f"  Day {a['day_number']} of {DEADLINE_DAYS}  "
+    print(f"  Day {a['day_number']} of {a['deadline_days']}  "
           f"({a['days_remaining']} days remaining)")
     print("-" * 60)
     ind = a["indicators"]
@@ -410,16 +461,22 @@ def print_report(analysis: dict):
 # Main loop
 # ──────────────────────────────────────────────────────────────────────
 
-def run_once(start_date: dt.date) -> dict:
+def run_once(start_date: dt.date, coin_id: str = COIN_ID,
+             deadline_days: int = DEADLINE_DAYS) -> dict:
     """Fetch data, compute indicators, print report, send alert if needed."""
     day_number = (dt.date.today() - start_date).days
-    day_number = max(0, min(day_number, DEADLINE_DAYS))
+    day_number = max(0, min(day_number, deadline_days))
 
-    print(f"\nFetching {HISTORY_DAYS} days of stETH data from CoinGecko...")
-    df = fetch_ohlc()
+    print(f"\nFetching {HISTORY_DAYS} days of {coin_id} data from CoinGecko...")
+    df = fetch_ohlc(coin_id=coin_id)
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
-    analysis = analyse(df, day_number)
+    enrich_indicators(df)
+    history = compute_history(df, start_date, deadline_days)
+    print_history(history)
+
+    analysis = analyse(df, day_number, coin_id=coin_id, deadline_days=deadline_days)
+    analysis["history"] = history
     print_report(analysis)
 
     if analysis["sell_signal"]:
@@ -435,6 +492,10 @@ def main():
                         help="Run continuously instead of one-shot")
     parser.add_argument("--interval", type=int, default=3600,
                         help="Seconds between checks in loop mode (default: 3600)")
+    parser.add_argument("--coin", type=str, default=COIN_ID,
+                        help=f"CoinGecko coin ID to monitor (default: {COIN_ID})")
+    parser.add_argument("--days", type=int, default=DEADLINE_DAYS,
+                        help=f"Sell deadline window in days (default: {DEADLINE_DAYS})")
     parser.add_argument("--start-date", type=str, default=None,
                         help="Override start date (YYYY-MM-DD)")
     parser.add_argument("--json", action="store_true",
@@ -448,19 +509,20 @@ def main():
         print(f"Start date overridden to {start_date}")
 
     if not args.loop:
-        analysis = run_once(start_date)
+        analysis = run_once(start_date, coin_id=args.coin, deadline_days=args.days)
         if analysis["sell_signal"]:
             send_email_alert(analysis)
         if args.json:
             print("\n" + json.dumps(analysis, indent=2))
     else:
         print(f"Starting continuous monitoring (interval: {args.interval}s)")
-        print(f"Deadline: {start_date + dt.timedelta(days=DEADLINE_DAYS)}")
+        print(f"Coin: {args.coin}")
+        print(f"Deadline: {start_date + dt.timedelta(days=args.days)} ({args.days} days)")
         print("Press Ctrl+C to stop.\n")
         last_alert_date: Optional[dt.date] = None
         try:
             while True:
-                analysis = run_once(start_date)
+                analysis = run_once(start_date, coin_id=args.coin, deadline_days=args.days)
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
                 if analysis["sell_signal"]:

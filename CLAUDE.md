@@ -41,16 +41,18 @@ The weighted composite is compared against a threshold that decays on this sched
 
 ## Data source
 
-CoinGecko free API (`/api/v3/coins/staked-ether/market_chart`), no API key needed. Rate-limited to ~10–30 requests/minute.
+CoinGecko free API (`/api/v3/coins/{coin_id}/market_chart`), no API key needed. Rate-limited to ~10–30 requests/minute. The coin ID defaults to `staked-ether` and can be overridden with `--coin` (use the CoinGecko coin ID, e.g. `bitcoin`, `ethereum`, `staked-ether`).
 
 ## CLI usage
 
 ```
-uv run sell_monitor.py                          # one-shot check
+uv run sell_monitor.py                          # one-shot check (defaults to stETH)
+uv run sell_monitor.py --coin bitcoin           # monitor a different CoinGecko asset
 uv run sell_monitor.py --loop                   # continuous (default 1h interval)
 uv run sell_monitor.py --loop --interval 1800   # every 30 min
 uv run sell_monitor.py --json                   # also dump raw JSON
 uv run sell_monitor.py --start-date 2026-03-11  # override start date
+uv run sell_monitor.py --days 60                # extend deadline to 60 days
 ```
 
 ## Email alerts
