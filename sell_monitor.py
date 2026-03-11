@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2026 Eduard Grebe <eduard@grebe.consulting>
+# Copyright (c) 2026 Eduard Grebe Consulting (Pty) Ltd.
 """
 Crypto Momentum-Based Sell Signal Monitor
 ==========================================

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2026 Eduard Grebe <eduard@grebe.consulting>
+# Copyright (c) 2026 Eduard Grebe Consulting (Pty) Ltd.
 set -euo pipefail
 
 cd "$(dirname "$0")"
