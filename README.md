@@ -1,12 +1,12 @@
 # Crypto Momentum-Based Sell Signal Monitor
 
-> **Note:** This software was entirely vibe-coded using [Claude Code](https://claude.ai/claude-code). It is mostly a small experiment for my own amusement, and not intended to be useful to serious traders. Claude quite impressed me with its engineering decisions, which required some direction from me, but less than I thought it might. I mostly used Sonnet 4.6.
-
 A momentum-based sell signal monitor for crypto assets. It fetches regular price and volume data from CoinGecko, computes five technical indicators, and produces a composite score (0–100). The score is compared against a time-decaying threshold that loosens as a configurable deadline approaches — so it demands stronger signals early on and accepts weaker ones as time runs out.
 
-> **Disclaimer:** This software is provided for informational purposes only and does not constitute financial advice. Technical indicators are probabilistic tools, not crystal balls, and past market behaviour is no guarantee of future results. The author(s) accept no liability whatsoever for any financial loss, damages, or other adverse consequences — direct or indirect — arising from the use of or reliance on this software. You are solely responsible for your own investment decisions. Use at your own risk.
+> **Note:** This software was entirely vibe-coded using [Claude Code](https://claude.ai/claude-code). It is mostly a small experiment for my own amusement, and not intended to be useful to serious traders. Claude quite impressed me with its engineering decisions, which required some direction from me, but less than I thought it might. I mostly used Sonnet 4.6.
 
 **Author information:** Eduard Grebe, [Eduard Grebe Consulting](https://grebe.consulting).
+
+> **Disclaimer:** This software is provided for informational purposes only and does not constitute financial advice. Technical indicators are probabilistic tools, not crystal balls, and past market behaviour is no guarantee of future results. The author(s) accept no liability whatsoever for any financial loss, damages, or other adverse consequences — direct or indirect — arising from the use of or reliance on this software. You are solely responsible for your own investment decisions. Use at your own risk.
 
 ---
 
