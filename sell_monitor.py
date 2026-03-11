@@ -410,8 +410,8 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
 # Alerting
 # ──────────────────────────────────────────────────────────────────────
 
-def send_email_alert(analysis: dict, email_cfg: dict):
-    """Send an email alert if email is configured."""
+def _smtp_send(subject: str, body: str, email_cfg: dict) -> bool:
+    """Connect and send one email. Returns True on success, False if not configured."""
     email_from = email_cfg.get("from")
     email_to = email_cfg.get("to")
     smtp_host = email_cfg.get("smtp_host")
@@ -420,14 +420,7 @@ def send_email_alert(analysis: dict, email_cfg: dict):
     smtp_pass = email_cfg.get("smtp_pass")
 
     if not all([email_from, email_to, smtp_host, smtp_pass]):
-        return  # email not configured
-
-    subject = (
-        f"{'🟢 SELL SIGNAL' if analysis['sell_signal'] else '🔴 HOLD'} "
-        f"— stETH ${analysis['price_usd']} "
-        f"(score {analysis['composite_score']}/{analysis['threshold']})"
-    )
-    body = json.dumps(analysis, indent=2)
+        return False
 
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -439,9 +432,33 @@ def send_email_alert(analysis: dict, email_cfg: dict):
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.sendmail(email_from, [email_to], msg.as_string())
-        print(f"  Email alert sent to {email_to}")
+        print(f"  Email sent to {email_to}")
+        return True
     except Exception as e:
-        print(f"  Email alert failed: {e}", file=sys.stderr)
+        print(f"  Email failed: {e}", file=sys.stderr)
+        return False
+
+
+def send_email_alert(analysis: dict, email_cfg: dict):
+    """Send a sell-signal alert email if email is configured."""
+    subject = (
+        f"{'🟢 SELL SIGNAL' if analysis['sell_signal'] else '🔴 HOLD'} "
+        f"— {analysis['coin_id']} ${analysis['price_usd']} "
+        f"(score {analysis['composite_score']}/{analysis['threshold']})"
+    )
+    if not _smtp_send(subject, json.dumps(analysis, indent=2), email_cfg):
+        pass  # not configured — silently skip
+
+
+def send_test_email(analysis: dict, email_cfg: dict):
+    """Send a test email containing the current analysis including history."""
+    subject = (
+        f"[TEST] Sell Monitor — {analysis['coin_id']} ${analysis['price_usd']} "
+        f"(score {analysis['composite_score']}/{analysis['threshold']})"
+    )
+    if not _smtp_send(subject, json.dumps(analysis, indent=2), email_cfg):
+        print("  Email not configured — check config.json.", file=sys.stderr)
+        sys.exit(1)
 
 
 def print_report(analysis: dict):
@@ -514,6 +531,8 @@ def main():
                         help="Override start date (YYYY-MM-DD)")
     parser.add_argument("--json", action="store_true",
                         help="Also dump raw JSON to stdout")
+    parser.add_argument("--test-email", action="store_true",
+                        help="Fetch data, print report, and send a test email")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -529,7 +548,10 @@ def main():
     if args.start_date:
         print(f"Start date overridden to {start_date}")
 
-    if not args.loop:
+    if args.test_email:
+        analysis = run_once(start_date, coin_id=coin, deadline_days=days)
+        send_test_email(analysis, email_cfg)
+    elif not args.loop:
         analysis = run_once(start_date, coin_id=coin, deadline_days=days)
         if analysis["sell_signal"]:
             send_email_alert(analysis, email_cfg)
