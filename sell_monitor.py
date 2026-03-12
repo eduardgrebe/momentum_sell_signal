@@ -715,7 +715,12 @@ def main():
     W_VOLUME = w.get("volume",    W_VOLUME)
     total = W_RSI + W_MACD + W_STOCH + W_MA_POS + W_VOLUME
     if abs(total - 1.0) > 1e-6:
-        print(f"WARNING: indicator weights sum to {total:.4f}, not 1.0. Scores will be scaled.")
+        W_RSI = W_RSI / total
+        W_MACD = W_MACD / total
+        W_STOCH = W_STOCH / total
+        W_MA_POS = W_MA_POS / total
+        W_VOLUME = W_VOLUME / total
+        print(f"WARNING: indicator weights did not sum to {total:.4f}, not 1.0. Weights have been normalised.")
 
 
     start_date = (
