@@ -126,6 +126,12 @@ def fetch_ohlc(
             print(f"  Rate limited by CoinGecko, retrying in {wait}s...")
             time.sleep(wait)
             continue
+        if resp.status_code == 404:
+            print(
+                f"Error: coin ID '{coin_id}' was not found on CoinGecko.\n"
+                f"Check the ID at https://www.coingecko.com (use the API ID, e.g. 'bitcoin', 'ethereum')."
+            )
+            sys.exit(1)
         resp.raise_for_status()
         break
     else:
