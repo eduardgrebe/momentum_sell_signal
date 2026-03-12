@@ -92,11 +92,11 @@ W_VOLUME = 0.15
 # On day N (0-indexed from START_DATE), the sell threshold is the value
 # from the first bracket whose max_day >= N.
 TIME_DECAY_SCHEDULE = [
-    (10, 70),   # days 0-10:  only sell into strong momentum
-    (20, 55),   # days 11-20: moderately selective
-    (25, 40),   # days 21-25: take reasonable opportunities
-    (29, 25),   # days 26-29: sell on almost any uptick
-    (30, 0),    # day 30:     sell regardless
+    (10, 70),  # days 0-10:  only sell into strong momentum
+    (20, 55),  # days 11-20: moderately selective
+    (25, 40),  # days 21-25: take reasonable opportunities
+    (29, 25),  # days 26-29: sell on almost any uptick
+    (30, 0),  # day 30:     sell regardless
 ]
 
 # Warm-up rows needed before indicator values are valid
@@ -110,8 +110,10 @@ HISTORY_DAYS = _INDICATOR_WARMUP + DEADLINE_DAYS
 # Data fetching
 # ──────────────────────────────────────────────────────────────────────
 
-def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS,
-               vs_currency: str = VS_CURRENCY) -> pd.DataFrame:
+
+def fetch_ohlc(
+    coin_id: str = COIN_ID, days: int = HISTORY_DAYS, vs_currency: str = VS_CURRENCY
+) -> pd.DataFrame:
     """Fetch daily market data from CoinGecko and return a DataFrame."""
     # Use market_chart for price + volume (OHLC endpoint has limited granularity)
     url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart"
@@ -120,7 +122,7 @@ def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS,
     for attempt in range(5):
         resp = requests.get(url, params=params, timeout=30)
         if resp.status_code == 429:
-            wait = 2 ** attempt * 10
+            wait = 2**attempt * 10
             print(f"  Rate limited by CoinGecko, retrying in {wait}s...")
             time.sleep(wait)
             continue
@@ -130,7 +132,7 @@ def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS,
         resp.raise_for_status()
     data = resp.json()
 
-    prices = data["prices"]          # [[timestamp_ms, price], ...]
+    prices = data["prices"]  # [[timestamp_ms, price], ...]
     volumes = data["total_volumes"]  # [[timestamp_ms, volume], ...]
 
     df = pd.DataFrame(prices, columns=["ts", "close"])
@@ -152,6 +154,7 @@ def fetch_ohlc(coin_id: str = COIN_ID, days: int = HISTORY_DAYS,
 # Technical indicator calculations
 # ──────────────────────────────────────────────────────────────────────
 
+
 def compute_rsi(series: pd.Series, period: int = RSI_PERIOD) -> pd.Series:
     delta = series.diff()
     gain = delta.where(delta > 0, 0.0)
@@ -162,10 +165,12 @@ def compute_rsi(series: pd.Series, period: int = RSI_PERIOD) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def compute_macd(series: pd.Series,
-                 fast: int = MACD_FAST,
-                 slow: int = MACD_SLOW,
-                 signal: int = MACD_SIGNAL):
+def compute_macd(
+    series: pd.Series,
+    fast: int = MACD_FAST,
+    slow: int = MACD_SLOW,
+    signal: int = MACD_SIGNAL,
+):
     ema_fast = series.ewm(span=fast, adjust=False).mean()
     ema_slow = series.ewm(span=slow, adjust=False).mean()
     macd_line = ema_fast - ema_slow
@@ -174,10 +179,12 @@ def compute_macd(series: pd.Series,
     return macd_line, signal_line, histogram
 
 
-def compute_stochastic(df: pd.DataFrame,
-                       k_period: int = STOCH_K_PERIOD,
-                       d_period: int = STOCH_D_PERIOD,
-                       smooth: int = STOCH_SMOOTH):
+def compute_stochastic(
+    df: pd.DataFrame,
+    k_period: int = STOCH_K_PERIOD,
+    d_period: int = STOCH_D_PERIOD,
+    smooth: int = STOCH_SMOOTH,
+):
     low_min = df["low"].rolling(window=k_period, min_periods=k_period).min()
     high_max = df["high"].rolling(window=k_period, min_periods=k_period).max()
     raw_k = 100 * (df["close"] - low_min) / (high_max - low_min).replace(0, np.nan)
@@ -189,6 +196,7 @@ def compute_stochastic(df: pd.DataFrame,
 # ──────────────────────────────────────────────────────────────────────
 # Scoring functions (each returns 0-100)
 # ──────────────────────────────────────────────────────────────────────
+
 
 def score_rsi(rsi_value: float) -> float:
     """Higher RSI = better time to sell (selling into strength)."""
@@ -287,9 +295,12 @@ def score_volume(current_vol: float, avg_vol: float) -> float:
 # Composite score and decision
 # ──────────────────────────────────────────────────────────────────────
 
-def get_threshold(day_number: int,
-                  deadline_days: int = DEADLINE_DAYS,
-                  start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> int:
+
+def get_threshold(
+    day_number: int,
+    deadline_days: int = DEADLINE_DAYS,
+    start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+) -> int:
     """Return the sell threshold for the given day (0-indexed from start).
     Bracket boundaries scale proportionally with deadline_days.
     start_threshold overrides the value for the first bracket."""
@@ -318,17 +329,26 @@ def composite_score_at(df: pd.DataFrame, i: int) -> float:
     row, prev = df.iloc[i], df.iloc[i - 1]
     s_rsi = score_rsi(row["rsi"])
     s_macd = score_macd(row["macd_hist"], prev["macd_hist"])
-    s_stoch = score_stochastic(row["stoch_k"], row["stoch_d"],
-                               prev["stoch_k"], prev["stoch_d"])
+    s_stoch = score_stochastic(
+        row["stoch_k"], row["stoch_d"], prev["stoch_k"], prev["stoch_d"]
+    )
     s_ma = score_ma_position(row["close"], row["sma20"], row["sma50"])
     s_vol = score_volume(row["volume"], row["vol_avg_20"])
-    return (W_RSI * s_rsi + W_MACD * s_macd + W_STOCH * s_stoch
-            + W_MA_POS * s_ma + W_VOLUME * s_vol)
+    return (
+        W_RSI * s_rsi
+        + W_MACD * s_macd
+        + W_STOCH * s_stoch
+        + W_MA_POS * s_ma
+        + W_VOLUME * s_vol
+    )
 
 
-def compute_history(df: pd.DataFrame, start_date: dt.date,
-                    deadline_days: int,
-                    start_threshold: int = TIME_DECAY_SCHEDULE[0][1]) -> list[dict]:
+def compute_history(
+    df: pd.DataFrame,
+    start_date: dt.date,
+    deadline_days: int,
+    start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+) -> list[dict]:
     """Return composite scores for the last deadline_days rows of an enriched df."""
     n = len(df)
     rows = []
@@ -336,16 +356,20 @@ def compute_history(df: pd.DataFrame, start_date: dt.date,
         row = df.iloc[i]
         date = df.index[i]
         day_num = (date - start_date).days
-        threshold = get_threshold(max(0, min(day_num, deadline_days)), deadline_days, start_threshold)
+        threshold = get_threshold(
+            max(0, min(day_num, deadline_days)), deadline_days, start_threshold
+        )
         score = composite_score_at(df, i)
-        rows.append({
-            "date": str(date),
-            "price_usd": round(row["close"], 2),
-            "day_number": day_num,
-            "composite_score": round(score, 1),
-            "threshold": threshold,
-            "sell_signal": bool(score >= threshold),
-        })
+        rows.append(
+            {
+                "date": str(date),
+                "price_usd": round(row["close"], 2),
+                "day_number": day_num,
+                "composite_score": round(score, 1),
+                "threshold": threshold,
+                "sell_signal": bool(score >= threshold),
+            }
+        )
     return rows
 
 
@@ -357,14 +381,20 @@ def print_history(history: list[dict], currency: str = "USD") -> None:
     print("  " + "-" * 54)
     for h in history:
         sig = "SELL" if h["sell_signal"] else "hold"
-        print(f"  {h['date']:<12} {h['price_usd']:>12,.2f}  "
-              f"{h['composite_score']:>6.1f}  {h['threshold']:>6}  {sig}")
+        print(
+            f"  {h['date']:<12} {h['price_usd']:>12,.2f}  "
+            f"{h['composite_score']:>6.1f}  {h['threshold']:>6}  {sig}"
+        )
 
 
-def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
-            deadline_days: int = DEADLINE_DAYS,
-            start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
-            currency: str = VS_CURRENCY) -> dict:
+def analyse(
+    df: pd.DataFrame,
+    day_number: int,
+    coin_id: str = COIN_ID,
+    deadline_days: int = DEADLINE_DAYS,
+    start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+    currency: str = VS_CURRENCY,
+) -> dict:
     """Compute today's full analysis from an already-enriched dataframe."""
     latest = df.iloc[-1]
     prev = df.iloc[-2]
@@ -373,8 +403,10 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
     s_rsi = score_rsi(latest["rsi"])
     s_macd = score_macd(latest["macd_hist"], prev["macd_hist"])
     s_stoch = score_stochastic(
-        latest["stoch_k"], latest["stoch_d"],
-        prev["stoch_k"], prev["stoch_d"],
+        latest["stoch_k"],
+        latest["stoch_d"],
+        prev["stoch_k"],
+        prev["stoch_d"],
     )
     s_ma = score_ma_position(latest["close"], latest["sma20"], latest["sma50"])
     s_vol = score_volume(latest["volume"], latest["vol_avg_20"])
@@ -415,13 +447,19 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
             },
             "ma_position": {
                 "price": round(latest["close"], 2),
-                "sma20": round(latest["sma20"], 2) if pd.notna(latest["sma20"]) else None,
-                "sma50": round(latest["sma50"], 2) if pd.notna(latest["sma50"]) else None,
+                "sma20": round(latest["sma20"], 2)
+                if pd.notna(latest["sma20"])
+                else None,
+                "sma50": round(latest["sma50"], 2)
+                if pd.notna(latest["sma50"])
+                else None,
                 "score": round(s_ma, 1),
             },
             "volume": {
                 "current": round(latest["volume"], 0),
-                "avg_20d": round(latest["vol_avg_20"], 0) if pd.notna(latest["vol_avg_20"]) else None,
+                "avg_20d": round(latest["vol_avg_20"], 0)
+                if pd.notna(latest["vol_avg_20"])
+                else None,
                 "score": round(s_vol, 1),
             },
         },
@@ -431,6 +469,7 @@ def analyse(df: pd.DataFrame, day_number: int, coin_id: str = COIN_ID,
 # ──────────────────────────────────────────────────────────────────────
 # Alerting
 # ──────────────────────────────────────────────────────────────────────
+
 
 def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> str:
     """Build an HTML email body with a monospace font, markdown history table,
@@ -446,7 +485,7 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
     cur = a.get("currency", "USD").upper()
     # History as a markdown table
     header = f"| {'Date':<12} | {f'Price ({cur})':>12} | {'Score':>6} | {'Thresh':>6} | Signal |"
-    sep    = f"|{'-'*14}|{'-'*14}|{'-'*8}|{'-'*8}|{'-'*8}|"
+    sep = f"|{'-' * 14}|{'-' * 14}|{'-' * 8}|{'-' * 8}|{'-' * 8}|"
     rows = [header, sep]
     for h in history:
         sig = "SELL" if h["sell_signal"] else "hold"
@@ -473,18 +512,22 @@ def _build_email_html(analysis: dict, history_limit: Optional[int] = None) -> st
     )
 
     label = f"last {len(history)} days"
-    content = f"## Historical Scores ({label})\n\n{table}\n\n{'-'*60}\n\n{breakdown}"
+    content = f"## Historical Scores ({label})\n\n{table}\n\n{'-' * 60}\n\n{breakdown}"
 
     return (
-        "<html><body style=\"font-family: monospace; font-size: 14px;\">"
+        '<html><body style="font-family: monospace; font-size: 14px;">'
         f"<pre>{content}</pre>"
         "</body></html>"
     )
 
 
-def _smtp_connect_and_send(subject: str, html_body: str, email_cfg: dict,
-                           attachment_bytes: Optional[bytes] = None,
-                           attachment_name: Optional[str] = None) -> bool:
+def _smtp_connect_and_send(
+    subject: str,
+    html_body: str,
+    email_cfg: dict,
+    attachment_bytes: Optional[bytes] = None,
+    attachment_name: Optional[str] = None,
+) -> bool:
     """Low-level: build and send a multipart email. Returns True on success,
     False if not configured."""
     email_from = email_cfg.get("from")
@@ -521,22 +564,31 @@ def _smtp_connect_and_send(subject: str, html_body: str, email_cfg: dict,
         return False
 
 
-def _smtp_send(subject: str, analysis: dict, email_cfg: dict,
-               history_limit: Optional[int] = None) -> bool:
+def _smtp_send(
+    subject: str, analysis: dict, email_cfg: dict, history_limit: Optional[int] = None
+) -> bool:
     """Build and send an analysis email with HTML body and JSON attachment."""
     html = _build_email_html(analysis, history_limit=history_limit)
     json_bytes = json.dumps(analysis, indent=2).encode()
     return _smtp_connect_and_send(subject, html, email_cfg, json_bytes, "analysis.json")
 
 
-def _build_startup_html(coin: str, start_date: dt.date, days: int, interval: int,
-                        start_threshold: int, daily_update: bool,
-                        email_cfg: dict) -> str:
+def _build_startup_html(
+    coin: str,
+    start_date: dt.date,
+    days: int,
+    interval: int,
+    start_threshold: int,
+    daily_update: bool,
+    email_cfg: dict,
+) -> str:
     """Build the HTML body for a service startup confirmation email."""
     deadline = start_date + dt.timedelta(days=days)
     interval_min = interval // 60
     interval_sec = interval % 60
-    interval_str = f"{interval_min}m" if interval_sec == 0 else f"{interval_min}m {interval_sec}s"
+    interval_str = (
+        f"{interval_min}m" if interval_sec == 0 else f"{interval_min}m {interval_sec}s"
+    )
 
     # Scaled time-decay schedule
     scale = days / DEADLINE_DAYS
@@ -567,24 +619,32 @@ def _build_startup_html(coin: str, start_date: dt.date, days: int, interval: int
     )
 
     return (
-        "<html><body style=\"font-family: monospace; font-size: 14px;\">"
+        '<html><body style="font-family: monospace; font-size: 14px;">'
         f"<pre>{content}</pre>"
         "</body></html>"
     )
 
 
-def send_startup_email(coin: str, start_date: dt.date, days: int, interval: int,
-                       start_threshold: int, daily_update: bool, email_cfg: dict):
+def send_startup_email(
+    coin: str,
+    start_date: dt.date,
+    days: int,
+    interval: int,
+    start_threshold: int,
+    daily_update: bool,
+    email_cfg: dict,
+):
     """Send a service-started confirmation email with key configuration parameters."""
     subject = f"[SERVICE STARTED] sell-monitor — {coin} ({days}-day window)"
-    html = _build_startup_html(coin, start_date, days, interval,
-                               start_threshold, daily_update, email_cfg)
+    html = _build_startup_html(
+        coin, start_date, days, interval, start_threshold, daily_update, email_cfg
+    )
     _smtp_connect_and_send(subject, html, email_cfg)
 
 
 def send_email_alert(analysis: dict, email_cfg: dict):
     """Send a sell-signal alert email if email is configured."""
-    cur = analysis.get('currency', 'USD')
+    cur = analysis.get("currency", "USD")
     subject = (
         f"[!ALERT!] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
@@ -594,7 +654,7 @@ def send_email_alert(analysis: dict, email_cfg: dict):
 
 def send_daily_update_email(analysis: dict, email_cfg: dict):
     """Send a daily update email with a 7-day history table."""
-    cur = analysis.get('currency', 'USD')
+    cur = analysis.get("currency", "USD")
     subject = (
         f"[UPDATE] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
@@ -604,7 +664,7 @@ def send_daily_update_email(analysis: dict, email_cfg: dict):
 
 def send_test_email(analysis: dict, email_cfg: dict):
     """Send a test email containing the current analysis including history."""
-    cur = analysis.get('currency', 'USD')
+    cur = analysis.get("currency", "USD")
     subject = (
         f"[TEST] {analysis['coin_id']} {analysis['price_usd']} {cur} "
         f"— score {analysis['composite_score']}/{analysis['threshold']}"
@@ -621,22 +681,36 @@ def print_report(analysis: dict):
     print("=" * 60)
     print(f"  Sell Monitor [{a['coin_id']}] — {a['date']}")
     print(f"  Price: {a['price_usd']:,.2f} {a.get('currency', 'USD')}")
-    print(f"  Day {a['day_number']} of {a['deadline_days']}  "
-          f"({a['days_remaining']} days remaining)")
+    print(
+        f"  Day {a['day_number']} of {a['deadline_days']}  "
+        f"({a['days_remaining']} days remaining)"
+    )
     print("-" * 60)
     ind = a["indicators"]
-    print(f"  RSI(14):        {ind['rsi']['value']:>6.1f}   "
-          f"score {ind['rsi']['score']:>5.1f}  (weight {W_RSI:.0%})")
-    print(f"  MACD Hist:      {ind['macd_histogram']['value']:>10.4f}   "
-          f"score {ind['macd_histogram']['score']:>5.1f}  (weight {W_MACD:.0%})")
-    print(f"  Stoch %K/%D:    {ind['stochastic']['k']:>5.1f}/{ind['stochastic']['d']:<5.1f} "
-          f"score {ind['stochastic']['score']:>5.1f}  (weight {W_STOCH:.0%})")
-    print(f"  MA Position:    SMA20={ind['ma_position']['sma20']}  SMA50={ind['ma_position']['sma50']}  "
-          f"score {ind['ma_position']['score']:>5.1f}  (weight {W_MA_POS:.0%})")
-    print(f"  Volume Ratio:   score {ind['volume']['score']:>5.1f}  (weight {W_VOLUME:.0%})")
+    print(
+        f"  RSI(14):        {ind['rsi']['value']:>6.1f}   "
+        f"score {ind['rsi']['score']:>5.1f}  (weight {W_RSI:.0%})"
+    )
+    print(
+        f"  MACD Hist:      {ind['macd_histogram']['value']:>10.4f}   "
+        f"score {ind['macd_histogram']['score']:>5.1f}  (weight {W_MACD:.0%})"
+    )
+    print(
+        f"  Stoch %K/%D:    {ind['stochastic']['k']:>5.1f}/{ind['stochastic']['d']:<5.1f} "
+        f"score {ind['stochastic']['score']:>5.1f}  (weight {W_STOCH:.0%})"
+    )
+    print(
+        f"  MA Position:    SMA20={ind['ma_position']['sma20']}  SMA50={ind['ma_position']['sma50']}  "
+        f"score {ind['ma_position']['score']:>5.1f}  (weight {W_MA_POS:.0%})"
+    )
+    print(
+        f"  Volume Ratio:   score {ind['volume']['score']:>5.1f}  (weight {W_VOLUME:.0%})"
+    )
     print("-" * 60)
-    print(f"  COMPOSITE SCORE:  {a['composite_score']:>5.1f}  /  "
-          f"threshold {a['threshold']}")
+    print(
+        f"  COMPOSITE SCORE:  {a['composite_score']:>5.1f}  /  "
+        f"threshold {a['threshold']}"
+    )
     print(f"  DECISION:  {sig}")
     print("=" * 60)
 
@@ -645,17 +719,23 @@ def print_report(analysis: dict):
 # Main loop
 # ──────────────────────────────────────────────────────────────────────
 
-def run_once(start_date: dt.date, coin_id: str = COIN_ID,
-             deadline_days: int = DEADLINE_DAYS,
-             start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
-             currency: str = VS_CURRENCY) -> dict:
+
+def run_once(
+    start_date: dt.date,
+    coin_id: str = COIN_ID,
+    deadline_days: int = DEADLINE_DAYS,
+    start_threshold: int = TIME_DECAY_SCHEDULE[0][1],
+    currency: str = VS_CURRENCY,
+) -> dict:
     """Fetch data, compute indicators, print report, send alert if needed."""
     day_number = (dt.date.today() - start_date).days
     day_number = max(0, min(day_number, deadline_days))
 
     fetch_days = _INDICATOR_WARMUP + deadline_days
-    print(f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko "
-          f"({_INDICATOR_WARMUP}d indicator warmup + {deadline_days}d window)...")
+    print(
+        f"\nFetching {fetch_days} days of {coin_id} data from CoinGecko "
+        f"({_INDICATOR_WARMUP}d indicator warmup + {deadline_days}d window)..."
+    )
     df = fetch_ohlc(coin_id=coin_id, days=fetch_days, vs_currency=currency)
     print(f"  Got {len(df)} data points, latest: {df.index[-1]}")
 
@@ -663,8 +743,14 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
     history = compute_history(df, start_date, deadline_days, start_threshold)
     print_history(history, currency=currency)
 
-    analysis = analyse(df, day_number, coin_id=coin_id, deadline_days=deadline_days,
-                       start_threshold=start_threshold, currency=currency)
+    analysis = analyse(
+        df,
+        day_number,
+        coin_id=coin_id,
+        deadline_days=deadline_days,
+        start_threshold=start_threshold,
+        currency=currency,
+    )
     analysis["history"] = history
     print_report(analysis)
 
@@ -678,22 +764,44 @@ def run_once(start_date: dt.date, coin_id: str = COIN_ID,
 def main():
     global VS_CURRENCY, W_RSI, W_MACD, W_STOCH, W_MA_POS, W_VOLUME
     parser = argparse.ArgumentParser(description="stETH momentum sell-signal monitor")
-    parser.add_argument("--loop", action="store_true",
-                        help="Run continuously instead of one-shot")
-    parser.add_argument("--interval", type=int, default=3600,
-                        help="Seconds between checks in loop mode (default: 3600)")
-    parser.add_argument("--coin", type=str, default=None,
-                        help=f"CoinGecko coin ID to monitor (default: {COIN_ID})")
-    parser.add_argument("--currency", type=str, default=None,
-                        help=f"Reference currency for prices (default: {VS_CURRENCY})")
-    parser.add_argument("--days", type=int, default=None,
-                        help=f"Sell deadline window in days (default: {DEADLINE_DAYS})")
-    parser.add_argument("--start-date", type=str, default=None,
-                        help="Override start date (YYYY-MM-DD)")
-    parser.add_argument("--json", action="store_true",
-                        help="Also dump raw JSON to stdout")
-    parser.add_argument("--test-email", action="store_true",
-                        help="Fetch data, print report, and send a test email")
+    parser.add_argument(
+        "--loop", action="store_true", help="Run continuously instead of one-shot"
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=3600,
+        help="Seconds between checks in loop mode (default: 3600)",
+    )
+    parser.add_argument(
+        "--coin",
+        type=str,
+        default=None,
+        help=f"CoinGecko coin ID to monitor (default: {COIN_ID})",
+    )
+    parser.add_argument(
+        "--currency",
+        type=str,
+        default=None,
+        help=f"Reference currency for prices (default: {VS_CURRENCY})",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help=f"Sell deadline window in days (default: {DEADLINE_DAYS})",
+    )
+    parser.add_argument(
+        "--start-date", type=str, default=None, help="Override start date (YYYY-MM-DD)"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Also dump raw JSON to stdout"
+    )
+    parser.add_argument(
+        "--test-email",
+        action="store_true",
+        help="Fetch data, print report, and send a test email",
+    )
     args = parser.parse_args()
 
     cfg = load_config()
@@ -708,11 +816,11 @@ def main():
     # Load indicator weights from config, falling back to module-level defaults
     VS_CURRENCY = (args.currency or cfg.get("currency", VS_CURRENCY)).lower()
     w = cfg.get("weights", {})
-    W_RSI    = w.get("rsi",       W_RSI)
-    W_MACD   = w.get("macd",      W_MACD)
-    W_STOCH  = w.get("stoch",     W_STOCH)
-    W_MA_POS = w.get("ma_pos",    W_MA_POS)
-    W_VOLUME = w.get("volume",    W_VOLUME)
+    W_RSI = w.get("rsi", W_RSI)
+    W_MACD = w.get("macd", W_MACD)
+    W_STOCH = w.get("stoch", W_STOCH)
+    W_MA_POS = w.get("ma_pos", W_MA_POS)
+    W_VOLUME = w.get("volume", W_VOLUME)
     total = W_RSI + W_MACD + W_STOCH + W_MA_POS + W_VOLUME
     if abs(total - 1.0) > 1e-6:
         W_RSI = W_RSI / total
@@ -720,8 +828,9 @@ def main():
         W_STOCH = W_STOCH / total
         W_MA_POS = W_MA_POS / total
         W_VOLUME = W_VOLUME / total
-        print(f"WARNING: indicator weights did not sum to {total:.4f}, not 1.0. Weights have been normalised.")
-
+        print(
+            f"WARNING: indicator weights did not sum to {total:.4f}, not 1.0. Weights have been normalised."
+        )
 
     start_date = (
         dt.date.fromisoformat(args.start_date) if args.start_date else dt.date.today()
@@ -730,13 +839,23 @@ def main():
         print(f"Start date overridden to {start_date}")
 
     if args.test_email:
-        analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                            start_threshold=start_threshold, currency=VS_CURRENCY)
+        analysis = run_once(
+            start_date,
+            coin_id=coin,
+            deadline_days=days,
+            start_threshold=start_threshold,
+            currency=VS_CURRENCY,
+        )
         send_test_email(analysis, email_cfg)
     elif not args.loop:
         print("Running in one-shot mode. Use --loop to keep the monitor active.")
-        analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                            start_threshold=start_threshold, currency=VS_CURRENCY)
+        analysis = run_once(
+            start_date,
+            coin_id=coin,
+            deadline_days=days,
+            start_threshold=start_threshold,
+            currency=VS_CURRENCY,
+        )
         if analysis["sell_signal"]:
             send_email_alert(analysis, email_cfg)
         if args.json:
@@ -748,23 +867,40 @@ def main():
         print(f"Currency: {VS_CURRENCY.upper()}")
         print(f"Deadline: {start_date + dt.timedelta(days=days)} ({days} days)")
         print("Press Ctrl+C to stop.\n")
-        send_startup_email(coin, start_date, days, args.interval,
-                           start_threshold, daily_update, email_cfg)
+        send_startup_email(
+            coin,
+            start_date,
+            days,
+            args.interval,
+            start_threshold,
+            daily_update,
+            email_cfg,
+        )
         last_alert_time: Optional[dt.datetime] = None
         last_update_date: Optional[dt.date] = None
         alert_cooldown = dt.timedelta(hours=3)
         try:
             while True:
-                analysis = run_once(start_date, coin_id=coin, deadline_days=days,
-                                    start_threshold=start_threshold, currency=VS_CURRENCY)
+                analysis = run_once(
+                    start_date,
+                    coin_id=coin,
+                    deadline_days=days,
+                    start_threshold=start_threshold,
+                    currency=VS_CURRENCY,
+                )
                 if args.json:
                     print("\n" + json.dumps(analysis, indent=2))
                 now = dt.datetime.now()
                 today = now.date()
                 if analysis["sell_signal"]:
-                    print("\nSell signal triggered! Continuing to monitor "
-                          "in case you want to wait for an even better window.")
-                    if last_alert_time is None or (now - last_alert_time) >= alert_cooldown:
+                    print(
+                        "\nSell signal triggered! Continuing to monitor "
+                        "in case you want to wait for an even better window."
+                    )
+                    if (
+                        last_alert_time is None
+                        or (now - last_alert_time) >= alert_cooldown
+                    ):
                         send_email_alert(analysis, email_cfg)
                         last_alert_time = now
                 if daily_update and last_update_date != today:

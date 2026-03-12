@@ -3,11 +3,7 @@ name = "crypto-momentum-sell-monitor"
 version = "0.2.1"
 description = "Momentum-based sell signal monitor for crypto assets using composite technical indicators with time-decaying thresholds."
 requires-python = ">=3.14"
-dependencies = [
-    "requests>=2.32.5",
-    "pandas>=3.0.1",
-    "numpy>=2.4.3",
-]
+dependencies = ["requests>=2.32.5", "pandas>=3.0.1", "numpy>=2.4.3"]
 
 [project.scripts]
-steth-monitor = "sell_monitor:main"
+sell-monitor = "sell_monitor:main"
