@@ -44,7 +44,8 @@ import requests
 # Config file
 # ──────────────────────────────────────────────────────────────────────
 
-_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.join(_SCRIPT_DIR, "config.json")
 
 
 def load_config() -> dict:
@@ -53,6 +54,100 @@ def load_config() -> dict:
         return {}
     with open(_CONFIG_PATH) as f:
         return json.load(f)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Persistent state (survives service restarts)
+# ──────────────────────────────────────────────────────────────────────
+
+_STATE_DIR = os.path.join(os.path.expanduser("~"), ".config", "momentum_sell_monitor")
+
+
+def _state_path(coin_id: str) -> str:
+    return os.path.join(_STATE_DIR, f"state_{coin_id}.json")
+
+
+def _ensure_state_dir() -> None:
+    os.makedirs(_STATE_DIR, exist_ok=True)
+
+
+def load_start_date(coin_id: str) -> Optional[dt.date]:
+    """Return the saved start date for this coin, or None if no state file exists."""
+    path = _state_path(coin_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return dt.date.fromisoformat(data["start_date"])
+    except Exception:
+        return None
+
+
+def save_start_date(coin_id: str, start_date: dt.date) -> None:
+    """Persist the start date for this coin so restarts resume from the same day."""
+    _ensure_state_dir()
+    path = _state_path(coin_id)
+    with open(path, "w") as f:
+        json.dump({"start_date": str(start_date)}, f)
+    print(f"  State saved: {path}")
+
+
+def resolve_start_date(
+    coin_id: str,
+    cli_start_date: Optional[str],
+    deadline_days: int,
+) -> dt.date:
+    """Determine the effective start date, handling state file and interactive prompts.
+
+    Priority:
+      1. --start-date flag → use it, save to state file (always wins, no prompt)
+      2. No TTY (service restart) + state file → resume silently
+      3. TTY (interactive) + state file → prompt user to resume or start fresh
+      4. No state file → use today, save to state file
+    """
+    if cli_start_date:
+        start_date = dt.date.fromisoformat(cli_start_date)
+        save_start_date(coin_id, start_date)
+        print(f"Start date set to {start_date} (state file updated)")
+        return start_date
+
+    saved = load_start_date(coin_id)
+
+    if saved is None:
+        start_date = dt.date.today()
+        save_start_date(coin_id, start_date)
+        print(f"Start date initialised to {start_date}")
+        return start_date
+
+    # State file exists — decide whether to prompt
+    if not sys.stdin.isatty():
+        # Running as a background service: resume silently
+        day_num = (dt.date.today() - saved).days
+        print(
+            f"Resuming from saved start date: {saved} "
+            f"(day {day_num} of {deadline_days})"
+        )
+        return saved
+
+    # Interactive run: ask the user
+    day_num = (dt.date.today() - saved).days
+    print(
+        f"\nState file found: monitoring started {saved} "
+        f"(day {day_num} of {deadline_days})."
+    )
+    try:
+        answer = input("  Resume from saved start date? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+    if answer in ("", "y", "yes"):
+        print(f"  Resuming from {saved}.")
+        return saved
+    else:
+        start_date = dt.date.today()
+        save_start_date(coin_id, start_date)
+        print(f"  Starting fresh from today: {start_date}")
+        return start_date
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -838,11 +933,7 @@ def main():
             f"WARNING: indicator weights did not sum to {total:.4f}, not 1.0. Weights have been normalised."
         )
 
-    start_date = (
-        dt.date.fromisoformat(args.start_date) if args.start_date else dt.date.today()
-    )
-    if args.start_date:
-        print(f"Start date overridden to {start_date}")
+    start_date = resolve_start_date(coin, args.start_date, days)
 
     if args.test_email:
         analysis = run_once(

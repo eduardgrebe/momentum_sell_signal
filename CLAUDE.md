@@ -8,6 +8,7 @@ Momentum-based sell signal monitor for any CoinGecko-listed asset. Computes a co
 - `pyproject.toml` — dependency management via `uv`
 - `config.example.json` — template for `config.json`
 - `config.json` — local config with credentials (git-ignored, never commit)
+- `~/.config/momentum_sell_monitor/state_{coin}.json` — auto-created per-coin state file (outside repo) storing the start date; allows the service to resume from the correct day after a restart
 - `setup.sh` — installs `uv` and syncs dependencies on a new machine
 - `run.sh` — runs the monitor, calling `setup.sh` only if needed
 - `install-service.sh` — installs the monitor as a persistent background service (macOS LaunchAgent or Linux systemd user service); supports multiple simultaneous instances for different assets via coin-specific service names
