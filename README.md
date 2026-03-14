@@ -147,6 +147,49 @@ All fields are optional. Any value set here can be overridden by a command-line 
 
 ---
 
+## Persistent state and start-date tracking
+
+The monitor needs to know which day of the deadline window it is on. To survive machine reboots and service restarts without losing track, it stores the start date in a small JSON state file outside the repository.
+
+### Where the state file lives
+
+```
+~/.config/momentum_sell_monitor/state_<coin>.json
+```
+
+The directory is created automatically on the first run. Each coin gets its own file (e.g. `state_bitcoin.json`, `state_staked-ether.json`) so multiple simultaneous service instances never interfere with each other. The file contains only the start date, for example:
+
+```json
+{"start_date": "2026-03-01"}
+```
+
+### Behaviour on startup
+
+| Situation | What happens |
+|---|---|
+| No state file exists | Today is saved as the start date and monitoring begins from day 0 |
+| State file exists, running as a **background service** (no TTY) | Start date is loaded silently — the countdown resumes where it left off |
+| State file exists, running **interactively** (terminal) | You are prompted: `Resume from saved start date? [Y/n]` — press Enter or `y` to resume, `n` to start fresh from today |
+| `--start-date` is given | That date is always used and the state file is updated, with no prompt |
+
+The no-TTY check is what distinguishes a service restart from an interactive run — a LaunchAgent or systemd unit has no attached terminal, so the prompt is suppressed automatically.
+
+### Resetting the countdown
+
+To restart the countdown from today without passing a flag, delete the state file:
+
+```bash
+rm ~/.config/momentum_sell_monitor/state_<coin>.json
+```
+
+Or pass `--start-date` with a new date to set an explicit starting point:
+
+```bash
+uv run sell_monitor.py --start-date 2026-04-01
+```
+
+---
+
 ## Command-line arguments
 
 ```
@@ -158,7 +201,7 @@ uv run sell_monitor.py [OPTIONS]
 | `--coin ID` | CoinGecko coin ID to monitor (e.g. `bitcoin`, `ethereum`, `staked-ether`) |
 | `--currency CODE` | Reference currency for prices (e.g. `usd`, `eur`, `gbp`, `btc`) (default: `usd`) |
 | `--days N` | Sell deadline window in days (default: 30) |
-| `--start-date YYYY-MM-DD` | Override the start date of the deadline window (default: today) |
+| `--start-date YYYY-MM-DD` | Set or override the start date of the deadline window; updates the state file |
 | `--loop` | Run continuously, checking on a fixed interval |
 | `--interval N` | Seconds between checks in loop mode (default: 3600) |
 | `--json` | Also print the full analysis as JSON to stdout |
@@ -173,7 +216,7 @@ uv run sell_monitor.py
 # Monitor Bitcoin with a 14-day window
 uv run sell_monitor.py --coin bitcoin --days 14
 
-# Start a 30-day window from a specific date
+# Start (or reset) a 30-day window from a specific date
 uv run sell_monitor.py --start-date 2026-03-01
 
 # Run continuously, checking every 30 minutes
